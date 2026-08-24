@@ -14,9 +14,9 @@ import javax.crypto.SecretKey
  * Export, verify and restore of encrypted backups.
  *
  * Files move through the Storage Access Framework, so the user picks the
- * destination and the app needs no storage permission and no network. Where the
- * file ends up — local, SD card, a cloud provider's document picker — is the
- * user's choice, and everything written is ciphertext either way.
+ * destination and the app needs no storage permission. Where the file ends up -
+ * local, SD card, a cloud provider's document picker - is the user's choice, and
+ * everything written is a SafeVault backup package either way.
  */
 class BackupManager(context: Context) {
 
@@ -36,6 +36,33 @@ class BackupManager(context: Context) {
         data class Failed(val reason: String) : RestoreResult
     }
 
+    data class EncryptedPackage(
+        val bytes: ByteArray,
+        val entryCount: Int
+    )
+
+    suspend fun createEncryptedPackage(
+        passphrase: CharArray,
+        dek: SecretKey
+    ): EncryptedPackage = withContext(Dispatchers.IO) {
+        val entries = repository.getAll()
+        val services = repository.allServices()
+        EncryptedPackage(
+            bytes = BackupPackage.write(
+                passphrase = passphrase,
+                dek = dek,
+                vaultCreatedAt = prefs.vaultCreatedAt,
+                entries = entries,
+                services = services,
+                // Bindings ride along so a restored vault autofills immediately
+                // rather than relearning every site the user has already taught it.
+                bindings = repository.allBindings(),
+                passkeys = repository.allPasskeys()
+            ),
+            entryCount = entries.size
+        )
+    }
+
     /**
      * Writes an encrypted backup, then immediately reads it back and decrypts it.
      * An export that cannot be reopened is reported as unverified rather than
@@ -48,26 +75,14 @@ class BackupManager(context: Context) {
         dek: SecretKey
     ): ExportResult = withContext(Dispatchers.IO) {
         try {
-            val entries = repository.getAll()
-            val services = repository.allServices()
-            val bytes = BackupPackage.write(
-                passphrase = passphrase,
-                dek = dek,
-                vaultCreatedAt = prefs.vaultCreatedAt,
-                entries = entries,
-                services = services,
-                // Bindings ride along so a restored vault autofills immediately
-                // rather than relearning every site the user has already taught it.
-                bindings = repository.allBindings(),
-                passkeys = repository.allPasskeys()
-            )
+            val backup = createEncryptedPackage(passphrase, dek)
             appContext.contentResolver.openOutputStream(destination, "wt")
-                ?.use { it.write(bytes) }
+                ?.use { it.write(backup.bytes) }
                 ?: return@withContext ExportResult.Failed("Could not open the chosen file")
 
-            val verified = verify(destination, passphrase, entries.size)
+            val verified = verify(destination, passphrase, backup.entryCount)
             if (verified) prefs.lastBackupAt = System.currentTimeMillis()
-            ExportResult.Success(entries.size, verified)
+            ExportResult.Success(backup.entryCount, verified)
         } catch (e: Exception) {
             ExportResult.Failed(e.message ?: "Export failed")
         }

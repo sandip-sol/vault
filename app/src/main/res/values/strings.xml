@@ -138,6 +138,7 @@
     <string name="security_title">Security</string>
     <string name="section_health">Password health</string>
     <string name="section_backup">Backup</string>
+    <string name="section_connected_backup">Connected backup</string>
     <string name="section_unlock">Unlock</string>
     <string name="section_privacy">Privacy</string>
 
@@ -161,6 +162,27 @@
     <string name="backup_unverified">The file was written but could not be re-opened, so it has not been recorded as a backup. Try a different location.</string>
     <string name="backup_failed">Backup failed: %1$s</string>
 
+    <string name="connected_backup_off">Network Lock is on. Connected backup will not make any request until you explicitly enable it for one HTTPS endpoint.</string>
+    <string name="connected_backup_ready">Ready to upload encrypted backups to %1$s.</string>
+    <string name="connected_backup_last">Last connected backup: %1$s to %2$s.</string>
+    <string name="connected_backup_configure">Set up connected backup</string>
+    <string name="connected_backup_turn_off">Turn off connected backup</string>
+    <string name="connected_backup_upload">Upload encrypted backup</string>
+    <string name="connected_backup_consent_title">Enable connected backup?</string>
+    <string name="connected_backup_consent_body">SafeVault will be allowed to upload only the backup package to an HTTPS endpoint you choose. The server sees the restore header and sealed payload; it never receives your master password, backup passphrase, unwrapped vault key or plaintext entries. Network Lock stays on for everything else.</string>
+    <string name="connected_backup_consent_accept">I agree</string>
+    <string name="connected_backup_endpoint_title">Backup endpoint</string>
+    <string name="connected_backup_endpoint_hint">https://example.com/safevault-backup</string>
+    <string name="connected_backup_endpoint_note">Use an HTTPS endpoint you control or trust. SafeVault sends a POST request with the encrypted backup as the request body.</string>
+    <string name="connected_backup_endpoint_invalid">Enter a valid HTTPS endpoint with no embedded username or password.</string>
+    <string name="connected_backup_enabled">Connected backup enabled</string>
+    <string name="connected_backup_disabled">Connected backup disabled. Network Lock is back on.</string>
+    <string name="connected_backup_passphrase_note">This creates the same encrypted backup package as local export, then uploads it. The passphrase is never sent.</string>
+    <string name="connected_backup_locked">Unlock the vault before creating a connected backup.</string>
+    <string name="connected_backup_done">Uploaded and verified %1$d entries (HTTP %2$d).</string>
+    <string name="connected_backup_blocked">Network request blocked: %1$s</string>
+    <string name="connected_backup_failed">Connected backup failed: %1$s</string>
+
     <string name="restore">Restore</string>
     <string name="restore_intro">Choose an encrypted SafeVault backup file. You will need the passphrase it was created with.</string>
     <string name="restore_warning">Restoring replaces everything currently in this vault. This cannot be undone.</string>
@@ -183,8 +205,10 @@
     <string name="change_password_note">Your entries are not re-encrypted — only the key protecting them is re-wrapped, so this is instant and cannot corrupt the vault.</string>
     <string name="password_changed">Master password changed. Biometric unlock was turned off; re-enable it to use it again.</string>
 
-    <string name="network_status">Network Lock — permanently on</string>
-    <string name="privacy_detail">This build does not declare the INTERNET permission, so the operating system itself prevents any network access. No analytics, no sync, no breach lookups. Backups go only where you point the file picker.</string>
+    <string name="network_status_locked">Network Lock - on</string>
+    <string name="network_status_connected">Network policy - connected backup only</string>
+    <string name="privacy_detail_locked">This build declares the INTERNET permission for optional connected backup, but the default policy is DENY_ALL. No request is issued while Network Lock is on.</string>
+    <string name="privacy_detail_connected">Network access is limited to backup package uploads to %1$s. No analytics, sync, breach lookups or plaintext checks are enabled.</string>
 
     <!-- Autofill -->
     <string name="autofill">Autofill</string>

@@ -14,8 +14,9 @@ because sequencing is constrained by what is already built.
 
 SafeVault is a working local vault: master password, AES-256-GCM records, Room
 storage, biometric unlock, search, generator, auto-lock, `FLAG_SECURE`, encrypted
-backup/restore, Android Autofill, and an Android 14+ Credential Provider. In PRD
-terms, Phases 1 through 5 are now implemented.
+backup/restore, Android Autofill, an Android 14+ Credential Provider, and optional
+connected backup behind a deny-by-default network policy. In PRD terms, Phases 1
+through 6 are now implemented.
 
 The current state after this round of work:
 
@@ -27,7 +28,7 @@ The current state after this round of work:
 | Phase 3 — Android autofill | `AutofillService`, save/update prompts | **Done** (device matrix still needed before release) |
 | Phase 4 — Portable backup | Encrypted export, restore, verification | **Done** (ahead of PRD order — see §2) |
 | Phase 5 — Passkeys + Credential Provider | Android 14+ provider | **Done** (device matrix still needed before release) |
-| Phase 6 — Optional connected backup | Network policy, remote backup | **Not started** (deliberately) |
+| Phase 6 — Optional connected backup | Network policy, remote backup | **Done** |
 | Phase 7 — Sync & security intelligence | E2EE sync, breach checks | **Not started** |
 
 ---
@@ -89,6 +90,7 @@ Implemented in:
 | v1 → v2 data migration | [LegacyVaultMigration.kt](app/src/main/java/com/safevault/app/security/LegacyVaultMigration.kt) |
 | Crypto boundary for records | [VaultRepository.kt](app/src/main/java/com/safevault/app/data/VaultRepository.kt) |
 | Backup format | [BackupPackage.kt](app/src/main/java/com/safevault/app/backup/BackupPackage.kt) |
+| Network boundary | [NetworkPolicy.kt](app/src/main/java/com/safevault/app/security/NetworkPolicy.kt) |
 
 ### Payload schema
 
@@ -120,7 +122,7 @@ migrate; it is never written.
 | Clipboard snooping | Sensitive flag + timed clear. **Partial** — a keyboard reading a live clipboard still wins. Autofill (Phase 3) is the real fix |
 | New fingerprint enrolled by an attacker | `setInvalidatedByBiometricEnrollment(true)` destroys the key; vault falls back to password |
 | Backup file stolen | Single GCM tag over DEK + all records, keyed by a 310k-iteration PBKDF2 of a separate passphrase |
-| Network exfiltration | No `INTERNET` permission in the manifest — enforced by the OS, not by app code |
+| Network exfiltration | `INTERNET` exists for Phase 6, but `NetworkPolicy` defaults to `DENY_ALL`; the only allowed capability is a user-consented HTTPS connected-backup upload |
 | Rooted device | Not defended. Documented, not promised against |
 
 ---
@@ -194,8 +196,6 @@ drill, run against a real emulator, not a unit test.
 
 | Not built | Reason |
 |---|---|
-| `INTERNET` permission | The PRD notes INTERNET is a *normal* permission the user cannot revoke, so an in-app network switch is a promise, not a control. Omitting it makes Network Lock an OS-enforced property of the build. Adding any connected feature means declaring it — a visible, reviewable decision |
-| `NetworkPolicy` abstraction | Nothing to police while the permission is absent. Introduce it in Phase 6 together with the permission, not before |
 | Argon2id | The PRD prefers a memory-hard KDF. Adding it means vendoring a native dependency into a security-critical build; PBKDF2 at 210k/310k is the interim position and `KdfParams.version` exists so the change is a DEK re-wrap, not a vault rebuild |
 | Analytics | None, opt-in or otherwise |
 | Multiple vaults, sharing, TOTP | Post-MVP in the PRD, and none are blocked by current decisions |
@@ -312,13 +312,31 @@ Credential Manager callers.
 
 ---
 
-## 8. Later phases
+## 8. Phase 6 — Optional connected backup as completed
 
-**Phase 6 — Optional connected backup.** The first phase that declares `INTERNET`.
-Prerequisites: `NetworkPolicy` boundary with `DENY_ALL` default; an explicit consent
-screen; automated tests asserting no request is issued in Network Lock; the privacy
-dashboard from PRD §15. The backup format already produces ciphertext suitable for
-upload unchanged — the server never needs a key.
+Phase 6 is the first phase that declares `INTERNET`, and that remains the review
+point it was meant to be. The app now has a `NetworkPolicy` boundary whose default
+settings are `DENY_ALL`; connected backup is the only named network capability.
+
+1. **Network boundary.** [NetworkPolicy.kt](app/src/main/java/com/safevault/app/security/NetworkPolicy.kt)
+   requires `CONNECTED_BACKUP_ONLY`, a recorded consent timestamp and a valid HTTPS
+   endpoint before an upload is allowed. [ConnectedBackup.kt](app/src/main/java/com/safevault/app/backup/ConnectedBackup.kt)
+   checks that policy before it calls the uploader, which keeps the "no request
+   during Network Lock" invariant testable without opening a socket.
+2. **Connected backup upload.** [ConnectedBackupManager.kt](app/src/main/java/com/safevault/app/backup/ConnectedBackupManager.kt)
+   builds the same backup package used by local export, verifies it can be opened
+   with the passphrase, then POSTs it to the configured endpoint. The server
+   receives the clear restore header plus sealed payload, never the master password,
+   backup passphrase, unwrapped DEK or plaintext entries.
+3. **Consent and privacy dashboard.** [SecurityActivity.kt](app/src/main/java/com/safevault/app/ui/SecurityActivity.kt)
+   adds an explicit consent dialog, HTTPS endpoint setup, manual upload, disable
+   action and a privacy status panel that switches between Network Lock and
+   "connected backup only."
+4. **Tests.** `NetworkPolicyTest` covers deny-by-default, consent and HTTPS
+   requirements. `ConnectedBackupCoordinatorTest` asserts the uploader is not
+   called while Network Lock is on.
+
+## 8a. Later phases
 
 **Phase 7 — Sync.** Not startable until device identity and conflict resolution are
 designed. The PRD is right that this must not be attempted before backup and the
@@ -328,7 +346,7 @@ device key model are mature.
 
 ## 9. Testing status
 
-129 JVM tests, all passing (`./gradlew testDebugUnitTest`):
+136 JVM tests, all passing (`./gradlew testDebugUnitTest`):
 
 | Suite | Covers |
 |---|---|
@@ -344,6 +362,7 @@ device key model are mature.
 | `SaveCandidateTest` | Save-path password choice, including change-password forms preferring the new password |
 | `VaultDatabaseMigrationTest` | Schema 2→3 and 3→4 migrations, service collapse, orphan prevention, binding/passkey constraints and cascade behaviour |
 | `WebAuthnTest` | Passkey attestation JSON construction and assertion signature verification |
+| `NetworkPolicyTest` / `ConnectedBackupCoordinatorTest` | Deny-by-default network policy, consent/HTTPS gates and no uploader call during Network Lock |
 
 **Gaps, in priority order:**
 
@@ -368,11 +387,12 @@ device key model are mature.
 | Blocker | Status |
 |---|---|
 | Plaintext credential in logs, crash reports, backups or temp files | **Clear** — backup file verified free of entry plaintext; nothing logs secrets |
-| Network request during Network Lock | **Structurally impossible** — no `INTERNET` permission |
+| Network request during Network Lock | **Tested in code** — `NetworkPolicy` defaults to `DENY_ALL`, and the connected-backup coordinator does not call its uploader while blocked |
 | Backup that cannot be restored on a clean device | **Verified** — full uninstall/restore drill passes |
 | Autofill path exposing a locked credential | **Designed against in code** — locked fill responses do not query the vault; device matrix still pending |
 | Migration that can silently drop or corrupt records | **Partly proven** — schema 2→3 is JVM-tested; legacy content migration still lacks automated interruption coverage |
-| Cloud feature where server compromise reveals plaintext | **N/A** — no server |
+| Cloud feature where server compromise reveals plaintext | **Designed against** — connected backup uploads the existing sealed backup package; the endpoint gets no key or passphrase |
 
-Independent security review remains a release requirement before any connected
-feature, per the PRD's closing note. Nothing in this round substitutes for it.
+Independent security review remains a release requirement for the connected-backup
+boundary and any future sync feature, per the PRD's closing note. Nothing in this
+round substitutes for it.

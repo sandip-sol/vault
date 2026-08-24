@@ -38,7 +38,11 @@ class VaultPrefs(context: Context) {
         private const val KEY_BIOMETRIC = "biometric_enabled"
         private const val KEY_AUTO_LOCK_MS = "auto_lock_ms"
         private const val KEY_LAST_BACKUP_AT = "last_backup_at"
+        private const val KEY_LAST_CONNECTED_BACKUP_AT = "last_connected_backup_at"
         private const val KEY_VAULT_CREATED_AT = "vault_created_at"
+        private const val KEY_NETWORK_POLICY_MODE = "network_policy_mode"
+        private const val KEY_CONNECTED_BACKUP_ENDPOINT = "connected_backup_endpoint"
+        private const val KEY_CONNECTED_BACKUP_CONSENT_AT = "connected_backup_consent_at"
 
         // Pre-envelope (schema v1) keys, read only during migration
         private const val KEY_LEGACY_SALT = "salt"
@@ -164,6 +168,47 @@ class VaultPrefs(context: Context) {
     var lastBackupAt: Long
         get() = prefs.getLong(KEY_LAST_BACKUP_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_BACKUP_AT, value).apply()
+
+    var lastConnectedBackupAt: Long
+        get() = prefs.getLong(KEY_LAST_CONNECTED_BACKUP_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_CONNECTED_BACKUP_AT, value).apply()
+
+    var networkPolicyMode: NetworkPolicy.Mode
+        get() {
+            val stored = prefs.getString(KEY_NETWORK_POLICY_MODE, null) ?: return NetworkPolicy.Mode.DENY_ALL
+            return runCatching { NetworkPolicy.Mode.valueOf(stored) }
+                .getOrDefault(NetworkPolicy.Mode.DENY_ALL)
+        }
+        set(value) = prefs.edit().putString(KEY_NETWORK_POLICY_MODE, value.name).apply()
+
+    var connectedBackupEndpoint: String
+        get() = prefs.getString(KEY_CONNECTED_BACKUP_ENDPOINT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CONNECTED_BACKUP_ENDPOINT, value.trim()).apply()
+
+    val connectedBackupConsentAt: Long
+        get() = prefs.getLong(KEY_CONNECTED_BACKUP_CONSENT_AT, 0L)
+
+    fun enableConnectedBackup(endpoint: String, consentAt: Long = System.currentTimeMillis()) {
+        prefs.edit()
+            .putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.CONNECTED_BACKUP_ONLY.name)
+            .putString(KEY_CONNECTED_BACKUP_ENDPOINT, endpoint.trim())
+            .putLong(KEY_CONNECTED_BACKUP_CONSENT_AT, consentAt)
+            .apply()
+    }
+
+    fun disableConnectedBackup() {
+        prefs.edit()
+            .putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.DENY_ALL.name)
+            .remove(KEY_CONNECTED_BACKUP_ENDPOINT)
+            .remove(KEY_CONNECTED_BACKUP_CONSENT_AT)
+            .apply()
+    }
+
+    fun networkPolicySettings() = NetworkPolicy.Settings(
+        mode = networkPolicyMode,
+        connectedBackupConsentAt = connectedBackupConsentAt,
+        connectedBackupEndpoint = connectedBackupEndpoint
+    )
 
     // ── Helpers ────────────────────────────────────────────────────────────
 

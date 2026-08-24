@@ -1,9 +1,9 @@
 # 🔐 Safe Vault — offline-first credential vault for Android
 
-A password manager that works with no account and no network. Credentials are
-encrypted with **AES-256-GCM** under a random vault key that is itself wrapped by
-your master password — and the app declares no `INTERNET` permission, so Network
-Lock is enforced by Android rather than promised by the code.
+A password manager that works with no account and starts in Network Lock. Credentials
+are encrypted with **AES-256-GCM** under a random vault key that is itself wrapped by
+your master password. Optional connected backup can upload the same sealed backup
+package to an HTTPS endpoint only after explicit consent.
 
 See [ROADMAP.md](ROADMAP.md) for architecture rationale, phase plan and open gaps.
 
@@ -20,6 +20,7 @@ See [ROADMAP.md](ROADMAP.md) for architecture rationale, phase plan and open gap
 | ⭐ Favourites & recents | Both pinned above the service list for fast retrieval |
 | 🩺 Password health | Weak and reused passwords flagged locally — reuse is detected via a vault-keyed HMAC, never a stored hash of your password |
 | 💾 Encrypted backup | One passphrase-protected file, verified by re-reading it after every export |
+| ☁️ Optional connected backup | Deny-by-default network policy; uploads only backup packages to a user-chosen HTTPS endpoint |
 | ♻️ Restore | Recovers the vault key and re-wraps it for the new device; records are never re-encrypted |
 | 🔍 Search | Filters on non-secret metadata only — no decryption per keystroke |
 | 🎲 Generator | Passwords (length and character classes) and passphrases (1024-word list, exactly 10 bits per word), with live entropy and session-only history |
@@ -61,13 +62,13 @@ app/src/main/java/com/safevault/app/
 ├── SafeVaultApp.kt      process-wide auto-lock clock
 ├── autofill/            AutofillService, auth/save handoff, field parsing,
 │                        URI/package matching and inline suggestions
-├── backup/              BackupPackage (file format), BackupManager (export/restore)
+├── backup/              BackupPackage, local export/restore, connected backup
 ├── data/                VaultEntry, VaultService, UriBinding, VaultDao,
 │                        VaultDatabase, VaultRepository
 ├── importer/            CsvImport (parsing + column detection)
 ├── security/            CryptoManager, KeyDerivation, VaultKeyManager,
 │                        BiometricKeyGuard, VaultPrefs, SessionManager,
-│                        PasswordHealth, LegacyVaultMigration
+│                        PasswordHealth, NetworkPolicy, LegacyVaultMigration
 └── ui/                  Unlock / Vault / EntryEdit / Security / Restore /
                          Generator / Import activities, VaultListAdapter,
                          SecureClipboard, PasswordGenerator, PassphraseGenerator
@@ -79,7 +80,7 @@ Android Studio (Koala or newer), or from the command line:
 
 ```bash
 ./gradlew assembleDebug        # APK at app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # 129 JVM tests
+./gradlew testDebugUnitTest    # 136 JVM tests
 ```
 
 AGP 8.5.2, Kotlin 1.9.24, min SDK 26 / target SDK 34. Biometric unlock needs a
@@ -107,8 +108,8 @@ cp app/build/outputs/apk/debug/app-debug.apk /mnt/c/temp/safevault.apk
 4. The **key icon** opens the Generator: passwords or passphrases, with a live
    entropy read-out. Nothing generated there is saved.
 5. The **shield icon** opens Security: password health, encrypted backup and
-   restore, CSV import, biometric unlock, auto-lock timing and master password
-   change.
+   restore, optional connected backup, CSV import, biometric unlock, auto-lock
+   timing and master password change.
 6. In Security, turn on **Autofill service** through Android's system prompt to
    offer saved logins in apps and browsers.
 

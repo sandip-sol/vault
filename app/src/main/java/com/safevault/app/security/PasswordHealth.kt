@@ -7,9 +7,8 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Local-only password health (roadmap §4, Phase 2 backlog). Everything here is
- * computed on-device from the vault's own contents — no hash prefix is sent
- * anywhere, and there is no network path to send it down. Remote breach lookup
- * stays a later, opt-in feature.
+ * computed on-device from the vault's own contents. Remote breach lookup stays a
+ * later, opt-in feature and is not part of the Phase 6 connected-backup capability.
  */
 object PasswordHealth {
 

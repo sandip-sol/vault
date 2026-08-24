@@ -143,6 +143,51 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ── Connected backup ── -->
+            <TextView style="@style/TextAppearance.SafeVault.SectionHeader"
+                android:text="@string/section_connected_backup" />
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.SafeVault.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/spacing_md">
+
+                    <TextView
+                        android:id="@+id/tvConnectedBackupStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingMultiplier="1.3"
+                        android:textColor="@color/on_surface"
+                        android:textSize="15sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnConfigureConnectedBackup"
+                        style="@style/Widget.SafeVault.Button.Tonal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_md"
+                        android:text="@string/connected_backup_configure"
+                        app:icon="@drawable/ic_backup"
+                        app:iconGravity="textStart" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnUploadConnectedBackup"
+                        style="@style/Widget.SafeVault.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:text="@string/connected_backup_upload"
+                        app:icon="@drawable/ic_backup"
+                        app:iconGravity="textStart" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ── Unlock ── -->
             <TextView style="@style/TextAppearance.SafeVault.SectionHeader"
                 android:text="@string/section_unlock" />
@@ -273,9 +318,10 @@
                     android:padding="@dimen/spacing_md">
 
                     <TextView
+                        android:id="@+id/tvNetworkStatus"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/network_status"
+                        android:text="@string/network_status_locked"
                         android:textColor="@color/primary"
                         android:textSize="15sp"
                         android:textStyle="bold" />

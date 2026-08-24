@@ -3,9 +3,11 @@ package com.safevault.app.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.text.InputType
 import android.provider.Settings
 import android.view.autofill.AutofillManager
 import android.os.Bundle
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -17,8 +19,10 @@ import androidx.lifecycle.lifecycleScope
 import com.safevault.app.R
 import com.safevault.app.backup.BackupManager
 import com.safevault.app.backup.BackupPackage
+import com.safevault.app.backup.ConnectedBackupManager
 import com.safevault.app.data.VaultRepository
 import com.safevault.app.databinding.ActivitySecurityBinding
+import com.safevault.app.security.NetworkPolicy
 import com.safevault.app.security.PasswordHealth
 import com.safevault.app.security.SessionManager
 import com.safevault.app.security.VaultKeyManager
@@ -40,6 +44,7 @@ class SecurityActivity : SecureActivity() {
     private lateinit var keys: VaultKeyManager
     private lateinit var prefs: VaultPrefs
     private lateinit var backups: BackupManager
+    private lateinit var connectedBackups: ConnectedBackupManager
 
     /** Held between the passphrase prompt and the file picker returning. */
     private var pendingBackupPassphrase: CharArray? = null
@@ -62,10 +67,13 @@ class SecurityActivity : SecureActivity() {
         keys = VaultKeyManager(this)
         prefs = VaultPrefs(this)
         backups = BackupManager(this)
+        connectedBackups = ConnectedBackupManager(this)
 
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.btnCreateBackup.setOnClickListener { promptBackupPassphrase() }
         binding.btnRestoreBackup.setOnClickListener { confirmRestore() }
+        binding.btnConfigureConnectedBackup.setOnClickListener { toggleConnectedBackup() }
+        binding.btnUploadConnectedBackup.setOnClickListener { promptConnectedBackupPassphrase() }
         binding.btnImportCsv.setOnClickListener {
             startActivity(Intent(this, ImportActivity::class.java))
         }
@@ -73,7 +81,6 @@ class SecurityActivity : SecureActivity() {
 
         setUpAutoLock()
         setUpBiometricSwitch()
-        binding.tvPrivacyDetail.setText(R.string.privacy_detail)
     }
 
     override fun onResume() {
@@ -81,6 +88,8 @@ class SecurityActivity : SecureActivity() {
         if (isFinishing) return
         refreshHealth()
         refreshBackupStatus()
+        refreshConnectedBackupStatus()
+        refreshPrivacyStatus()
         // Autofill is enabled in system settings, not here, so the state has to
         // be re-read every time this screen comes back rather than cached.
         refreshAutofillStatus()
@@ -113,7 +122,7 @@ class SecurityActivity : SecureActivity() {
             if (enabled) R.string.autofill_open_settings else R.string.autofill_enable
         )
         binding.btnAutofill.setOnClickListener {
-            if (enabled) openAutofillSettings() else requestAutofillService(manager)
+            if (enabled) openAutofillSettings() else requestAutofillService()
         }
     }
 
@@ -121,7 +130,7 @@ class SecurityActivity : SecureActivity() {
      * Asks the system to make SafeVault the autofill service. The dialog is the
      * platform's, and declining it is a normal outcome rather than an error.
      */
-    private fun requestAutofillService(manager: AutofillManager) {
+    private fun requestAutofillService() {
         val intent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
             .setData(Uri.parse("package:$packageName"))
         try {
@@ -177,6 +186,44 @@ class SecurityActivity : SecureActivity() {
         }
     }
 
+    private fun refreshConnectedBackupStatus() {
+        val enabled = connectedBackupEnabled()
+        binding.btnConfigureConnectedBackup.setText(
+            if (enabled) R.string.connected_backup_turn_off else R.string.connected_backup_configure
+        )
+        binding.btnUploadConnectedBackup.isEnabled = enabled
+
+        binding.tvConnectedBackupStatus.text = if (!enabled) {
+            getString(R.string.connected_backup_off)
+        } else {
+            val endpoint = prefs.connectedBackupEndpoint
+            val last = prefs.lastConnectedBackupAt
+            if (last == 0L) {
+                getString(R.string.connected_backup_ready, endpoint)
+            } else {
+                val formatter = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                getString(R.string.connected_backup_last, formatter.format(Date(last)), endpoint)
+            }
+        }
+    }
+
+    private fun refreshPrivacyStatus() {
+        val enabled = connectedBackupEnabled()
+        binding.tvNetworkStatus.setText(
+            if (enabled) R.string.network_status_connected else R.string.network_status_locked
+        )
+        binding.tvPrivacyDetail.text = if (enabled) {
+            getString(R.string.privacy_detail_connected, prefs.connectedBackupEndpoint)
+        } else {
+            getString(R.string.privacy_detail_locked)
+        }
+    }
+
+    private fun connectedBackupEnabled(): Boolean =
+        NetworkPolicy(prefs.networkPolicySettings())
+            .evaluate(NetworkPolicy.Capability.CONNECTED_BACKUP_UPLOAD)
+            .allowed
+
     private fun promptBackupPassphrase() {
         PassphraseDialog.show(
             context = this,
@@ -206,27 +253,130 @@ class SecurityActivity : SecureActivity() {
         pendingBackupPassphrase = null
 
         lifecycleScope.launch {
-            when (val result = backups.export(destination, passphrase, dek)) {
-                is BackupManager.ExportResult.Success -> {
-                    // An export that will not re-open is not a backup, so the two
-                    // outcomes get different words rather than one cheerful tick.
-                    val message = if (result.verified) {
-                        getString(R.string.backup_verified, result.entries)
-                    } else {
-                        getString(R.string.backup_unverified)
+            try {
+                when (val result = backups.export(destination, passphrase, dek)) {
+                    is BackupManager.ExportResult.Success -> {
+                        // An export that will not re-open is not a backup, so the two
+                        // outcomes get different words rather than one cheerful tick.
+                        val message = if (result.verified) {
+                            getString(R.string.backup_verified, result.entries)
+                        } else {
+                            getString(R.string.backup_unverified)
+                        }
+                        AlertDialog.Builder(this@SecurityActivity)
+                            .setTitle(R.string.create_backup)
+                            .setMessage(message)
+                            .setPositiveButton(android.R.string.ok, null)
+                            .show()
+                        refreshBackupStatus()
                     }
-                    AlertDialog.Builder(this@SecurityActivity)
-                        .setTitle(R.string.create_backup)
-                        .setMessage(message)
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show()
-                    refreshBackupStatus()
-                }
 
-                is BackupManager.ExportResult.Failed ->
-                    toast(getString(R.string.backup_failed, result.reason))
+                    is BackupManager.ExportResult.Failed ->
+                        toast(getString(R.string.backup_failed, result.reason))
+                }
+            } finally {
+                passphrase.fill(' ')
             }
+        }
+    }
+
+    private fun toggleConnectedBackup() {
+        if (connectedBackupEnabled()) {
+            prefs.disableConnectedBackup()
+            refreshConnectedBackupStatus()
+            refreshPrivacyStatus()
+            toast(getString(R.string.connected_backup_disabled))
+        } else {
+            showConnectedBackupConsent()
+        }
+    }
+
+    private fun showConnectedBackupConsent() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.connected_backup_consent_title)
+            .setMessage(R.string.connected_backup_consent_body)
+            .setPositiveButton(R.string.connected_backup_consent_accept) { _, _ ->
+                promptConnectedBackupEndpoint()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun promptConnectedBackupEndpoint() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+            hint = getString(R.string.connected_backup_endpoint_hint)
+            setText(prefs.connectedBackupEndpoint)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.connected_backup_endpoint_title)
+            .setMessage(R.string.connected_backup_endpoint_note)
+            .setView(input)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val endpoint = input.text?.toString().orEmpty()
+                if (NetworkPolicy.isHttpsEndpoint(endpoint)) {
+                    prefs.enableConnectedBackup(endpoint)
+                    toast(getString(R.string.connected_backup_enabled))
+                    refreshConnectedBackupStatus()
+                    refreshPrivacyStatus()
+                } else {
+                    toast(getString(R.string.connected_backup_endpoint_invalid))
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun promptConnectedBackupPassphrase() {
+        PassphraseDialog.show(
+            context = this,
+            title = getString(R.string.connected_backup_upload),
+            note = getString(R.string.connected_backup_passphrase_note),
+            fields = listOf(
+                PassphraseDialog.Field(getString(R.string.backup_passphrase)),
+                PassphraseDialog.Field(getString(R.string.confirm_passphrase))
+            ),
+            positiveText = getString(R.string.connected_backup_upload),
+            validate = { values ->
+                when {
+                    values[0].length < 8 -> 0 to getString(R.string.error_password_short)
+                    values[0] != values[1] -> 1 to getString(R.string.error_password_mismatch)
+                    else -> null
+                }
+            }
+        ) { values ->
+            uploadConnectedBackup(values[0].toCharArray())
+        }
+    }
+
+    private fun uploadConnectedBackup(passphrase: CharArray) {
+        val dek = SessionManager.key
+        if (dek == null) {
             passphrase.fill(' ')
+            toast(getString(R.string.connected_backup_locked))
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                when (val result = connectedBackups.uploadNow(passphrase, dek)) {
+                    is ConnectedBackupManager.UploadResult.Success -> {
+                        toast(getString(R.string.connected_backup_done, result.entries, result.statusCode))
+                        refreshConnectedBackupStatus()
+                        refreshPrivacyStatus()
+                    }
+
+                    is ConnectedBackupManager.UploadResult.Blocked ->
+                        toast(getString(R.string.connected_backup_blocked, result.reason))
+
+                    is ConnectedBackupManager.UploadResult.Failed ->
+                        toast(getString(R.string.connected_backup_failed, result.reason))
+                }
+            } finally {
+                passphrase.fill(' ')
+            }
         }
     }
 
