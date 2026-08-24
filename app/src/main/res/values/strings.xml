@@ -34,6 +34,7 @@
     <string name="add_entry">Add entry</string>
     <string name="lock_now">Lock vault</string>
     <string name="favorites">Favourites</string>
+    <string name="recent">Recent</string>
     <string name="toggle_favorite">Toggle favourite</string>
     <string name="favorite">Favourite</string>
     <string name="badge_weak">WEAK</string>
@@ -76,6 +77,63 @@
     <string name="error_title_required">Title is required</string>
     <string name="decrypt_failed">Could not decrypt this entry</string>
 
+    <!-- Generator -->
+    <string name="generator_title">Generator</string>
+    <string name="open_generator">Open generator</string>
+    <string name="generator_mode_password">Password</string>
+    <string name="generator_mode_passphrase">Passphrase</string>
+    <string name="generator_regenerate">Regenerate</string>
+    <string name="generator_copy">Copy</string>
+    <string name="generator_length">Length: %1$d characters</string>
+    <string name="generator_words">Words: %1$d</string>
+    <string name="generator_entropy">About %1$d bits of entropy</string>
+    <string name="generator_lowercase">Lowercase (a–z)</string>
+    <string name="generator_uppercase">Uppercase (A–Z)</string>
+    <string name="generator_digits">Digits (2–9)</string>
+    <string name="generator_symbols">Symbols (!@#$…)</string>
+    <string name="generator_separator">Separator</string>
+    <string name="generator_capitalize">Capitalise each word</string>
+    <string name="generator_append_number">Add a number at the end</string>
+    <string name="generator_need_one_class">Keep at least one character type on</string>
+    <string name="generator_history">This session</string>
+    <string name="generator_history_note">Kept in memory only. Cleared when you leave this screen or the vault locks — nothing here is saved.</string>
+    <string name="generated_secret">Generated secret</string>
+    <string name="separator_hyphen">Hyphen  a-b-c</string>
+    <string name="separator_dot">Dot  a.b.c</string>
+    <string name="separator_underscore">Underscore  a_b_c</string>
+    <string name="separator_space">Space  a b c</string>
+
+    <!-- Import -->
+    <string name="import_title">Import from CSV</string>
+    <string name="import_intro">Bring in passwords exported from Chrome, Bitwarden, LastPass, 1Password, Keeper or any CSV with a header row. Columns are detected automatically.</string>
+    <string name="import_warning_title">Export files are plaintext</string>
+    <string name="import_warning_body">A password manager export is an unencrypted list of every account you own. Keep it on this device only, and delete it as soon as the import finishes — SafeVault will remind you.</string>
+    <string name="import_detected">Detected: %1$s</string>
+    <string name="import_preview">First few entries</string>
+    <string name="import_no_username">(no username)</string>
+    <string name="import_skipped">Skipped: %1$d with no password, %2$d with no name or address.</string>
+    <string name="import_adds_note">Importing adds to your vault. Nothing already stored is changed or removed, so running this twice creates duplicates.</string>
+    <string name="import_unreadable">That file could not be read as a CSV export.</string>
+    <string name="import_nothing_usable">No importable entries found in that file.</string>
+    <string name="import_failed">Import failed: %1$s</string>
+    <string name="import_cleanup_guidance">Now delete the CSV file you just imported.\n\nIt is an unencrypted copy of every password in it. Remove it from your Downloads folder, and from anywhere you copied it — email, cloud storage, or another device.\n\nIf you exported it from another password manager, empty that app\'s trash too.</string>
+    <string name="import_understood">Done</string>
+
+    <plurals name="import_ready">
+        <item quantity="one">%1$d entry ready to import</item>
+        <item quantity="other">%1$d entries ready to import</item>
+    </plurals>
+
+    <plurals name="import_action">
+        <item quantity="one">Import %1$d entry</item>
+        <item quantity="other">Import %1$d entries</item>
+    </plurals>
+
+    <plurals name="import_done">
+        <item quantity="one">Imported %1$d entry</item>
+        <item quantity="other">Imported %1$d entries</item>
+    </plurals>
+
     <!-- Security screen -->
     <string name="security_title">Security</string>
     <string name="section_health">Password health</string>
@@ -94,6 +152,7 @@
     <string name="backup_explainer">A backup is a single encrypted file protected by a passphrase you choose. Without a backup, losing this device means losing the vault.</string>
     <string name="create_backup">Create encrypted backup</string>
     <string name="restore_from_backup">Restore from backup</string>
+    <string name="section_transfer">Import</string>
     <string name="choose_file">Choose file</string>
     <string name="backup_passphrase">Backup passphrase</string>
     <string name="confirm_passphrase">Confirm passphrase</string>

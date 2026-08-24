@@ -31,6 +31,15 @@
                 android:letterSpacing="0.02" />
 
             <ImageButton
+                android:id="@+id/btnGenerator"
+                android:layout_width="@dimen/icon_size_lg"
+                android:layout_height="@dimen/icon_size_lg"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/open_generator"
+                android:src="@drawable/ic_key"
+                app:tint="@color/on_surface_variant" />
+
+            <ImageButton
                 android:id="@+id/btnSecurity"
                 android:layout_width="@dimen/icon_size_lg"
                 android:layout_height="@dimen/icon_size_lg"

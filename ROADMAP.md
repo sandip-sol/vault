@@ -14,7 +14,8 @@ because sequencing is constrained by what is already built.
 
 SafeVault is a working local vault: master password, AES-256-GCM records, Room
 storage, biometric unlock, search, generator, auto-lock, `FLAG_SECURE`. In PRD terms
-that is most of **Phase 1** plus scattered pieces of Phase 2.
+that was most of **Phase 1** plus scattered pieces of Phase 2. Phases 1, 2 and 4 are
+now complete.
 
 The current state after this round of work:
 
@@ -22,7 +23,7 @@ The current state after this round of work:
 |---|---|---|
 | Phase 0 — Product & security definition | Threat model, key hierarchy, data model | **Done** (this document + §3 below) |
 | Phase 1 — Local vault foundation | Envelope keys, encrypted CRUD, session, migration | **Done** |
-| Phase 2 — Consumer MVP UX | Grouping, multi-account, favourites, generator, health | **Mostly done** — import, recents surface outstanding |
+| Phase 2 — Consumer MVP UX | Grouping, multi-account, favourites, recents, generator, health, import | **Done** |
 | Phase 3 — Android autofill | `AutofillService`, save/update prompts | **Not started** |
 | Phase 4 — Portable backup | Encrypted export, restore, verification | **Done** (ahead of PRD order — see §2) |
 | Phase 5 — Passkeys + Credential Provider | Android 14+ provider | **Not started** |
@@ -198,6 +199,41 @@ drill, run against a real emulator, not a unit test.
 
 ---
 
+## 6a. Phase 2 as completed
+
+The PRD's Phase 2 backlog, item by item:
+
+| Backlog item | Where |
+|---|---|
+| Home with search, recent and favourites | Recent and Favourites are shortcut groups above the service list, in [VaultListAdapter.kt](app/src/main/java/com/safevault/app/ui/VaultListAdapter.kt) |
+| Add credential with service detection / manual entry | Service field with autocomplete from existing services |
+| Multiple accounts per service | `serviceName` grouping |
+| Password **and passphrase** generator | [GeneratorActivity.kt](app/src/main/java/com/safevault/app/ui/GeneratorActivity.kt), [PassphraseGenerator.kt](app/src/main/java/com/safevault/app/ui/PassphraseGenerator.kt) |
+| Copy/reveal behaviour with timers and state feedback | [SecureClipboard.kt](app/src/main/java/com/safevault/app/ui/SecureClipboard.kt), 30s clear-if-unchanged |
+| Import from CSV / other managers, with warnings and cleanup guidance | [CsvImport.kt](app/src/main/java/com/safevault/app/importer/CsvImport.kt), [ImportActivity.kt](app/src/main/java/com/safevault/app/ui/ImportActivity.kt) |
+| Local password-health checks | `strengthScore` and vault-keyed `reuseHash` |
+
+Three decisions worth recording:
+
+**Recent is gated.** It appears only when the vault holds at least 5 entries and at
+least 2 have been opened. Below that the whole list fits on screen and a Recent
+group would just repeat what the user can already see.
+
+**The passphrase wordlist is exactly 1024 words.** A power of two makes the entropy
+arithmetic exact and checkable — 10 bits per word, so six words is 60 bits and
+nobody has to trust a rounded claim. Words are 3–7 letters, and the list is asserted
+distinct and lowercase-ASCII by test, because a duplicate would silently reduce
+entropy below the figure the UI displays.
+
+**Generator history is session-only.** It lives in the activity, is never written to
+the database, and dies with the screen. A generator that persisted its output would
+quietly become a second, unencrypted copy of the passwords the vault exists to
+protect.
+
+Import deliberately *adds* rather than replaces — restore is the operation that
+replaces — and it ends on a blocking dialog about deleting the CSV, since that
+plaintext file is the one part of the flow the app cannot clean up itself.
+
 ## 7. Phase 3 — Android autofill (next)
 
 Exit criterion: filling credentials into Chrome and a representative app matrix, with
@@ -249,7 +285,7 @@ device key model are mature.
 
 ## 9. Testing status
 
-34 JVM tests, all passing (`./gradlew testDebugUnitTest`):
+76 JVM tests, all passing (`./gradlew testDebugUnitTest`):
 
 | Suite | Covers |
 |---|---|
@@ -257,7 +293,9 @@ device key model are mature.
 | `KeyDerivationTest` | Determinism, salt freshness, key length, backup work factor |
 | `BackupPackageTest` | Round trip, header readability, no plaintext in file, wrong passphrase, tamper, truncation, foreign file, unknown version, count mismatch |
 | `PasswordHealthTest` | Scoring, common-password and sequence detection, reuse-hash keying |
-| `PasswordGeneratorTest` | Length, class coverage, ambiguous-character exclusion, uniqueness |
+| `PasswordGeneratorTest` | Length, class coverage and exclusion, clamping, entropy, ambiguous characters, uniqueness |
+| `PassphraseGeneratorTest` | Wordlist size/distinctness/charset, word count, separator, capitalisation, appended number, exact entropy |
+| `CsvImportTest` | Quoted fields, doubled quotes, embedded newlines, CRLF, BOM; Chrome/Bitwarden/LastPass column detection, exact-over-substring matching; skipped-row accounting, host extraction |
 
 **Gaps, in priority order:**
 

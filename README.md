@@ -17,12 +17,13 @@ See [ROADMAP.md](ROADMAP.md) for architecture rationale, phase plan and open gap
 | 🧂 PBKDF2 | 210,000 iterations (SHA-256) for unlock, 310,000 for backups; parameters are versioned |
 | 👆 Biometric unlock | The vault key is sealed by an Android Keystore key that requires a Class 3 biometric for every use. A new fingerprint enrollment invalidates it automatically |
 | 🗂 Service grouping | Several accounts under one service (Personal + Work Gmail) group together |
-| ⭐ Favourites | Pinned to the top of the list for fast retrieval |
+| ⭐ Favourites & recents | Both pinned above the service list for fast retrieval |
 | 🩺 Password health | Weak and reused passwords flagged locally — reuse is detected via a vault-keyed HMAC, never a stored hash of your password |
 | 💾 Encrypted backup | One passphrase-protected file, verified by re-reading it after every export |
 | ♻️ Restore | Recovers the vault key and re-wraps it for the new device; records are never re-encrypted |
 | 🔍 Search | Filters on non-secret metadata only — no decryption per keystroke |
-| 🎲 Generator | 20 characters, every class guaranteed, ambiguous glyphs excluded |
+| 🎲 Generator | Passwords (length and character classes) and passphrases (1024-word list, exactly 10 bits per word), with live entropy and session-only history |
+| 📥 CSV import | Chrome, Bitwarden, LastPass, 1Password, Keeper or any CSV with a header — columns detected automatically |
 | 📋 Clipboard | Flagged sensitive, and cleared after 30s if untouched |
 | ⏱️ Auto-lock | Process-wide, configurable 30s–5m |
 | 🚫 Screenshot blocking | `FLAG_SECURE` on every screen |
@@ -58,11 +59,13 @@ app/src/main/java/com/safevault/app/
 ├── SafeVaultApp.kt      process-wide auto-lock clock
 ├── backup/              BackupPackage (file format), BackupManager (export/restore)
 ├── data/                VaultEntry, VaultDao, VaultDatabase, VaultRepository
+├── importer/            CsvImport (parsing + column detection)
 ├── security/            CryptoManager, KeyDerivation, VaultKeyManager,
 │                        BiometricKeyGuard, VaultPrefs, SessionManager,
 │                        PasswordHealth, LegacyVaultMigration
-└── ui/                  Unlock / Vault / EntryEdit / Security / Restore activities,
-                         VaultListAdapter, SecureClipboard, PasswordGenerator
+└── ui/                  Unlock / Vault / EntryEdit / Security / Restore /
+                         Generator / Import activities, VaultListAdapter,
+                         SecureClipboard, PasswordGenerator, PassphraseGenerator
 ```
 
 ## Build & run
@@ -71,7 +74,7 @@ Android Studio (Koala or newer), or from the command line:
 
 ```bash
 ./gradlew assembleDebug        # APK at app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # 34 JVM tests
+./gradlew testDebugUnitTest    # 76 JVM tests
 ```
 
 AGP 8.5.2, Kotlin 1.9.24, min SDK 24 / target SDK 34. Biometric unlock needs a
@@ -96,8 +99,20 @@ cp app/build/outputs/apk/debug/app-debug.apk /mnt/c/temp/safevault.apk
 2. Tap **+** to add an entry. The **Service** field groups accounts together, so
    "Personal" and "Work" both under `Gmail` appear as one group of two.
 3. Tap an entry to view or edit; **long-press to delete**; tap the ⭐ to favourite.
-4. The **shield icon** opens Security: password health, encrypted backup and
-   restore, biometric unlock, auto-lock timing and master password change.
+4. The **key icon** opens the Generator: passwords or passphrases, with a live
+   entropy read-out. Nothing generated there is saved.
+5. The **shield icon** opens Security: password health, encrypted backup and
+   restore, CSV import, biometric unlock, auto-lock timing and master password
+   change.
+
+### Importing from another password manager
+
+Security → **Import from CSV**. Columns are detected automatically for Chrome,
+Bitwarden, LastPass, 1Password and Keeper, and for any CSV with a recognisable
+header row. Import adds to your vault rather than replacing it.
+
+⚠️ An export from another manager is an unencrypted list of every password you
+own. Delete it as soon as the import finishes — the app will remind you.
 
 ## Upgrading an existing vault
 
