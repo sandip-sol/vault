@@ -1,0 +1,31 @@
+# Build output
+build/
+app/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Gradle
+.gradle/
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystores — never commit signing material
+*.jks
+*.keystore
+keystore.properties
+
+# Vault backups — encrypted, but no reason for them to be in a repo
+*.svbak
+
+# OS
+.DS_Store
+Thumbs.db
