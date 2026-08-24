@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Safe Vault</string>
+
+    <!-- Unlock screen -->
+    <string name="unlock_vault">Unlock Vault</string>
+    <string name="enter_master_password">Enter your master password to continue</string>
+    <string name="create_master_password">Create Master Password</string>
+    <string name="create_master_hint">This password protects all your data.\nIt cannot be recovered if forgotten!</string>
+    <string name="master_password">Master password</string>
+    <string name="current_master_password">Current master password</string>
+    <string name="new_master_password">New master password</string>
+    <string name="confirm_password">Confirm password</string>
+    <string name="unlock">Unlock</string>
+    <string name="create_vault">Create Vault</string>
+    <string name="use_biometric">Unlock with fingerprint</string>
+    <string name="use_password">Use password</string>
+    <string name="biometric_subtitle">Unlock your vault</string>
+    <string name="biometric_enroll_subtitle">Confirm your fingerprint to enable biometric unlock</string>
+    <string name="biometric_invalidated">Biometric unlock was turned off because the device biometrics changed. Unlock with your master password and re-enable it.</string>
+    <string name="biometric_locked_out">Too many failed attempts. Use your master password.</string>
+    <string name="error_password_short">Use at least 8 characters</string>
+    <string name="error_password_mismatch">Passwords don\'t match</string>
+    <string name="error_password_empty">Password is required</string>
+    <string name="error_wrong_password">Wrong password</string>
+    <string name="too_many_attempts">Too many attempts. Wait 5 seconds.</string>
+    <string name="migration_done">Vault upgraded to the new encryption format (%1$d entries)</string>
+    <string name="migration_failed">Could not upgrade the vault. Nothing was changed — try again.</string>
+
+    <!-- Vault list -->
+    <string name="search_hint">Search accounts…</string>
+    <string name="empty_vault">No entries yet.\nTap + to add your first ID &amp; password.</string>
+    <string name="empty_search">No accounts match that search.</string>
+    <string name="add_entry">Add entry</string>
+    <string name="lock_now">Lock vault</string>
+    <string name="favorites">Favourites</string>
+    <string name="toggle_favorite">Toggle favourite</string>
+    <string name="favorite">Favourite</string>
+    <string name="badge_weak">WEAK</string>
+    <string name="badge_reused">REUSED</string>
+    <string name="delete_entry">Delete entry?</string>
+    <string name="delete_confirm">Delete "%1$s" permanently?</string>
+    <string name="delete">Delete</string>
+
+    <plurals name="account_count">
+        <item quantity="one">%1$d account</item>
+        <item quantity="other">%1$d accounts</item>
+    </plurals>
+
+    <plurals name="seconds">
+        <item quantity="one">%1$d second</item>
+        <item quantity="other">%1$d seconds</item>
+    </plurals>
+
+    <plurals name="minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+
+    <!-- Entry editor -->
+    <string name="new_entry">New Entry</string>
+    <string name="edit_entry">Edit Entry</string>
+    <string name="title_hint">Title (e.g. Personal)</string>
+    <string name="service_hint">Service</string>
+    <string name="service_helper">Accounts sharing a service are grouped together</string>
+    <string name="website_hint">Website / app</string>
+    <string name="username_hint">Username / ID / email</string>
+    <string name="password_hint">Password</string>
+    <string name="notes_hint">Notes (optional)</string>
+    <string name="generate_password">Generate</string>
+    <string name="save">Save</string>
+    <string name="saved">Saved</string>
+    <string name="copied_autoclear">Copied — clipboard clears in %1$ds</string>
+    <string name="copy_username">Username</string>
+    <string name="copy_password">Password</string>
+    <string name="error_title_required">Title is required</string>
+    <string name="decrypt_failed">Could not decrypt this entry</string>
+
+    <!-- Security screen -->
+    <string name="security_title">Security</string>
+    <string name="section_health">Password health</string>
+    <string name="section_backup">Backup</string>
+    <string name="section_unlock">Unlock</string>
+    <string name="section_privacy">Privacy</string>
+
+    <string name="stat_stored">Stored</string>
+    <string name="stat_weak">Weak</string>
+    <string name="stat_reused">Reused</string>
+    <string name="health_clean">No weak or reused passwords found. These checks run entirely on this device.</string>
+    <string name="health_action">Open the flagged entries and generate a new password for each. These checks run entirely on this device — nothing is sent anywhere.</string>
+
+    <string name="backup_never">No backup yet</string>
+    <string name="backup_last">Last verified backup: %1$s</string>
+    <string name="backup_explainer">A backup is a single encrypted file protected by a passphrase you choose. Without a backup, losing this device means losing the vault.</string>
+    <string name="create_backup">Create encrypted backup</string>
+    <string name="restore_from_backup">Restore from backup</string>
+    <string name="choose_file">Choose file</string>
+    <string name="backup_passphrase">Backup passphrase</string>
+    <string name="confirm_passphrase">Confirm passphrase</string>
+    <string name="backup_passphrase_note">This passphrase is the only way to open the backup file. It is separate from your master password and cannot be recovered.</string>
+    <string name="backup_verified">Backup written and verified — %1$d entries re-read successfully.</string>
+    <string name="backup_unverified">The file was written but could not be re-opened, so it has not been recorded as a backup. Try a different location.</string>
+    <string name="backup_failed">Backup failed: %1$s</string>
+
+    <string name="restore">Restore</string>
+    <string name="restore_intro">Choose an encrypted SafeVault backup file. You will need the passphrase it was created with.</string>
+    <string name="restore_warning">Restoring replaces everything currently in this vault. This cannot be undone.</string>
+    <string name="restore_note">This backup holds %1$d entries. Enter its passphrase, then choose a master password for this device.</string>
+    <string name="restore_done">Restored %1$d entries. Unlock with your new master password.</string>
+    <string name="restore_wrong_passphrase">Wrong passphrase, or the file has been altered. Nothing was imported.</string>
+    <string name="restore_unreadable">That file is not a readable SafeVault backup.</string>
+    <string name="restore_failed">Restore failed: %1$s</string>
+
+    <string name="biometric_unlock">Biometric unlock</string>
+    <string name="biometric_note">Your vault key is sealed by a hardware-backed key that only unlocks after a fingerprint match. Enrolling a new fingerprint on this device turns this off automatically.</string>
+    <string name="biometric_note_unavailable">Needs a strong (Class 3) biometric enrolled in Android settings.</string>
+    <string name="biometric_enabled">Biometric unlock enabled</string>
+    <string name="biometric_disabled">Biometric unlock disabled</string>
+    <string name="biometric_unavailable">No strong biometrics enrolled on this device</string>
+    <string name="auto_lock">Auto-lock</string>
+    <string name="auto_lock_after">Lock after leaving the app for</string>
+    <string name="change_master_password">Change master password</string>
+    <string name="change">Change</string>
+    <string name="change_password_note">Your entries are not re-encrypted — only the key protecting them is re-wrapped, so this is instant and cannot corrupt the vault.</string>
+    <string name="password_changed">Master password changed. Biometric unlock was turned off; re-enable it to use it again.</string>
+
+    <string name="network_status">Network Lock — permanently on</string>
+    <string name="privacy_detail">This build does not declare the INTERNET permission, so the operating system itself prevents any network access. No analytics, no sync, no breach lookups. Backups go only where you point the file picker.</string>
+</resources>

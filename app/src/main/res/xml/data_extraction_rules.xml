@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Roadmap section 15: separate harmless preferences from sensitive state.
+
+  allowBackup is already false, so cloud backup and adb backup are off. These
+  rules cover device-to-device transfer (Android 12+), which is a separate
+  channel: the vault database, the wrapped DEK and the biometric envelope must
+  never ride along to another handset. The Keystore key that authorises the
+  biometric envelope is device-bound and cannot transfer anyway, so copying the
+  envelope would only produce an unopenable file on the new device.
+
+  The supported way to move a vault is the app's own encrypted backup, which the
+  user creates knowingly and protects with a passphrase they choose.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+    </device-transfer>
+</data-extraction-rules>
