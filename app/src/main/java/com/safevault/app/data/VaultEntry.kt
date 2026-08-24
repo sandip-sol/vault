@@ -18,14 +18,32 @@ import com.safevault.app.security.CryptoManager
  */
 @Entity(
     tableName = "entries",
-    indices = [Index("serviceName"), Index("favorite"), Index("reuseHash")]
+    indices = [
+        Index("serviceName"), Index("favorite"), Index("reuseHash"), Index("serviceId")
+    ]
 )
 data class VaultEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
 
     val title: String,
-    /** Grouping key — several accounts on one service share this. */
+
+    /**
+     * The [VaultService] this account belongs to; 0 before the 2 -> 3 migration
+     * has run. The service owns the URI bindings autofill matches on.
+     */
+    val serviceId: Long = 0,
+
+    /**
+     * Grouping key — several accounts on one service share this.
+     *
+     * Denormalised from [VaultService.name] on purpose. The list renders and
+     * searches every row on every keystroke, and doing that through a join buys
+     * nothing the user can see. [VaultRepository] is the only writer of either
+     * copy, so there is exactly one place that has to keep them equal.
+     */
     val serviceName: String = "",
+
+    /** The account's primary URL, for display. Matching uses [UriBinding]. */
     val website: String = "",
 
     val encryptedUsername: String,

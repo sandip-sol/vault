@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Declares the settings screen the system offers next to "SafeVault" in
+  Settings > Passwords & accounts > Autofill service.
+-->
+<autofill-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.safevault.app.ui.SecurityActivity" />

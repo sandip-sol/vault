@@ -24,6 +24,7 @@ See [ROADMAP.md](ROADMAP.md) for architecture rationale, phase plan and open gap
 | 🔍 Search | Filters on non-secret metadata only — no decryption per keystroke |
 | 🎲 Generator | Passwords (length and character classes) and passphrases (1024-word list, exactly 10 bits per word), with live entropy and session-only history |
 | 📥 CSV import | Chrome, Bitwarden, LastPass, 1Password, Keeper or any CSV with a header — columns detected automatically |
+| 🧩 Android Autofill | Fills matching logins in apps and browsers. A locked vault shows only an unlock action until you authenticate |
 | 📋 Clipboard | Flagged sensitive, and cleared after 30s if untouched |
 | ⏱️ Auto-lock | Process-wide, configurable 30s–5m |
 | 🚫 Screenshot blocking | `FLAG_SECURE` on every screen |
@@ -57,8 +58,11 @@ Android Keystore key                                  ▼
 ```
 app/src/main/java/com/safevault/app/
 ├── SafeVaultApp.kt      process-wide auto-lock clock
+├── autofill/            AutofillService, auth/save handoff, field parsing,
+│                        URI/package matching and inline suggestions
 ├── backup/              BackupPackage (file format), BackupManager (export/restore)
-├── data/                VaultEntry, VaultDao, VaultDatabase, VaultRepository
+├── data/                VaultEntry, VaultService, UriBinding, VaultDao,
+│                        VaultDatabase, VaultRepository
 ├── importer/            CsvImport (parsing + column detection)
 ├── security/            CryptoManager, KeyDerivation, VaultKeyManager,
 │                        BiometricKeyGuard, VaultPrefs, SessionManager,
@@ -74,10 +78,10 @@ Android Studio (Koala or newer), or from the command line:
 
 ```bash
 ./gradlew assembleDebug        # APK at app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # 76 JVM tests
+./gradlew testDebugUnitTest    # 123 JVM tests
 ```
 
-AGP 8.5.2, Kotlin 1.9.24, min SDK 24 / target SDK 34. Biometric unlock needs a
+AGP 8.5.2, Kotlin 1.9.24, min SDK 26 / target SDK 34. Biometric unlock needs a
 **Class 3 (strong)** biometric enrolled; weaker sensors cannot back a Keystore key,
 so the option stays disabled on those devices.
 
@@ -104,6 +108,8 @@ cp app/build/outputs/apk/debug/app-debug.apk /mnt/c/temp/safevault.apk
 5. The **shield icon** opens Security: password health, encrypted backup and
    restore, CSV import, biometric unlock, auto-lock timing and master password
    change.
+6. In Security, turn on **Autofill service** through Android's system prompt to
+   offer saved logins in apps and browsers.
 
 ### Importing from another password manager
 
@@ -124,5 +130,5 @@ leaves the vault openable and the migration resumable.
 ## Known gaps
 
 Tracked in [ROADMAP.md](ROADMAP.md) §9. In short: no instrumentation tests, the
-legacy migration is verified by hand rather than automatically, and autofill
-(the fix for clipboard exposure) is the next phase.
+legacy migration is verified by hand rather than automatically, and the Autofill
+compatibility matrix still needs device/emulator evidence.

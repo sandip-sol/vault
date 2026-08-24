@@ -1,5 +1,6 @@
 package com.safevault.app.importer
 
+import com.safevault.app.autofill.UriNormalizer
 import com.safevault.app.data.CredentialDraft
 
 /**
@@ -204,26 +205,22 @@ object CsvImport {
      * instead of two.
      */
     private val LOGIN_SUBDOMAINS =
-        listOf("www.", "accounts.", "account.", "login.", "signin.", "sso.", "auth.", "id.", "my.")
+        listOf("accounts.", "account.", "login.", "signin.", "sso.", "auth.", "id.", "my.")
 
     /**
      * `https://accounts.spotify.com/path` -> `spotify.com`.
      *
-     * A heuristic, not a public-suffix-list implementation: it will not know
-     * that `co.uk` is a suffix, and only strips the sign-in prefixes above. It
-     * decides grouping and the fallback title, never anything security-relevant,
-     * so being approximately right is enough — and the user can edit the service
-     * on any entry afterwards.
+     * The URL parsing is [UriNormalizer]'s, so importing and autofill agree on
+     * what a host is; only the sign-in-prefix stripping above is local. That
+     * stripping is a grouping heuristic and nothing more — it decides which
+     * header an imported row lands under and the fallback title, never which
+     * credential a fill request is offered. Binding a *matchable* host is
+     * [com.safevault.app.data.VaultRepository.bindWebsite]'s job, and it starts
+     * from the untouched URL rather than from this.
      */
     internal fun hostOf(url: String): String {
-        if (url.isBlank()) return ""
-        var host = url.trim()
-            .substringAfter("://")
-            .substringBefore('/')
-            .substringBefore('?')
-            .substringBefore(':')          // strip any :port
-            .lowercase()
-            .trim()
+        var host = UriNormalizer.normalizeHost(url)
+        if (host.isEmpty()) return ""
 
         LOGIN_SUBDOMAINS.forEach { prefix ->
             // Only strip when something of substance remains, so a site actually

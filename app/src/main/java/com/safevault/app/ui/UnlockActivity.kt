@@ -10,6 +10,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.safevault.app.R
+import com.safevault.app.data.ServiceBackfill
 import com.safevault.app.databinding.ActivityUnlockBinding
 import com.safevault.app.security.LegacyVaultMigration
 import com.safevault.app.security.SessionManager
@@ -31,13 +32,33 @@ class UnlockActivity : SecureActivity() {
     companion object {
         private const val LOCKOUT_AFTER_ATTEMPTS = 3
         private const val LOCKOUT_MS = 5_000L
+
+        /**
+         * Launch flag for the autofill hand-off: unlock, then return a result
+         * instead of opening the vault.
+         *
+         * Autofill needs an unlocked session but must not drag the user out of
+         * the app they were signing in to. Reusing this screen rather than
+         * writing a second one matters more than the flag is worth: the lockout
+         * counter, the Class 3 biometric rule, and the legacy migration all live
+         * here, and a parallel unlock screen would eventually be missing one.
+         */
+        const val EXTRA_FOR_RESULT = "unlock_for_result"
+
+        fun forResult(context: android.content.Context): Intent =
+            Intent(context, UnlockActivity::class.java).putExtra(EXTRA_FOR_RESULT, true)
     }
+
+    /** True when this screen was opened to unlock *for* something else. */
+    private val forResult: Boolean by lazy { intent.getBooleanExtra(EXTRA_FOR_RESULT, false) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityUnlockBinding.inflate(layoutInflater)
         setContentView(binding.root)
         keys = VaultKeyManager(this)
+
+        if (forResult) setResult(RESULT_CANCELED)
 
         if (keys.isInitialized) setupLoginMode() else setupCreateMode()
     }
@@ -56,8 +77,13 @@ class UnlockActivity : SecureActivity() {
     override fun onResume() {
         super.onResume()
         if (SessionManager.isUnlocked) {
-            startActivity(Intent(this, VaultActivity::class.java))
-            finish()
+            if (forResult) {
+                setResult(RESULT_OK)
+                finish()
+            } else {
+                startActivity(Intent(this, VaultActivity::class.java))
+                finish()
+            }
         }
     }
 
@@ -251,8 +277,17 @@ class UnlockActivity : SecureActivity() {
 
     private fun onUnlocked(dek: SecretKey) {
         SessionManager.unlock(dek)
-        startActivity(Intent(this, VaultActivity::class.java))
-        finish()
+        lifecycleScope.launch {
+            // Cheap after the first run: a boolean in SharedPreferences guards it.
+            ServiceBackfill.runIfNeeded(this@UnlockActivity)
+            if (forResult) {
+                // The caller — the autofill hand-off — owns what happens next.
+                setResult(RESULT_OK)
+            } else {
+                startActivity(Intent(this@UnlockActivity, VaultActivity::class.java))
+            }
+            finish()
+        }
     }
 
     private fun clearErrors() {

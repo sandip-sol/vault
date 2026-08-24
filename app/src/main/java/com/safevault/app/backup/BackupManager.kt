@@ -2,6 +2,7 @@ package com.safevault.app.backup
 
 import android.content.Context
 import android.net.Uri
+import com.safevault.app.data.ServiceBackfill
 import com.safevault.app.data.VaultRepository
 import com.safevault.app.security.VaultKeyManager
 import com.safevault.app.security.VaultPrefs
@@ -48,11 +49,16 @@ class BackupManager(context: Context) {
     ): ExportResult = withContext(Dispatchers.IO) {
         try {
             val entries = repository.getAll()
+            val services = repository.allServices()
             val bytes = BackupPackage.write(
                 passphrase = passphrase,
                 dek = dek,
                 vaultCreatedAt = prefs.vaultCreatedAt,
-                entries = entries
+                entries = entries,
+                services = services,
+                // Bindings ride along so a restored vault autofills immediately
+                // rather than relearning every site the user has already taught it.
+                bindings = repository.allBindings()
             )
             appContext.contentResolver.openOutputStream(destination, "wt")
                 ?.use { it.write(bytes) }
@@ -97,7 +103,12 @@ class BackupManager(context: Context) {
             val contents = BackupPackage.open(read(source), passphrase)
                 ?: return@withContext RestoreResult.WrongPassphrase
 
-            repository.replaceAll(contents.entries)
+            repository.replaceVault(contents.entries, contents.services, contents.bindings)
+            // The restored vault's bindings came from the file, not from this
+            // device's back-fill flag — re-arm it so a v1 backup, which carries
+            // no bindings, still gets them derived from its `website` columns.
+            ServiceBackfill.reset(appContext)
+            ServiceBackfill.runIfNeeded(appContext)
             keys.adoptDek(
                 dek = contents.dek,
                 masterPassword = newMasterPassword,

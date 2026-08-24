@@ -130,4 +130,17 @@
         <item name="navigationIconTint">@color/on_surface</item>
     </style>
 
+
+    <!--
+      For the autofill hand-off activities. They draw nothing themselves — the
+      unlock screen and the save dialog are what the user sees — so the window
+      behind those must not flash a full-screen SafeVault background over the
+      app the user is signing in to.
+    -->
+    <style name="Theme.SafeVault.Transparent" parent="Theme.SafeVault">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

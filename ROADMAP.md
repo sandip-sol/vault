@@ -13,9 +13,9 @@ because sequencing is constrained by what is already built.
 ## 1. Where the code actually is
 
 SafeVault is a working local vault: master password, AES-256-GCM records, Room
-storage, biometric unlock, search, generator, auto-lock, `FLAG_SECURE`. In PRD terms
-that was most of **Phase 1** plus scattered pieces of Phase 2. Phases 1, 2 and 4 are
-now complete.
+storage, biometric unlock, search, generator, auto-lock, `FLAG_SECURE`, encrypted
+backup/restore, and Android Autofill. In PRD terms, Phases 1 through 4 are now
+implemented.
 
 The current state after this round of work:
 
@@ -24,7 +24,7 @@ The current state after this round of work:
 | Phase 0 — Product & security definition | Threat model, key hierarchy, data model | **Done** (this document + §3 below) |
 | Phase 1 — Local vault foundation | Envelope keys, encrypted CRUD, session, migration | **Done** |
 | Phase 2 — Consumer MVP UX | Grouping, multi-account, favourites, recents, generator, health, import | **Done** |
-| Phase 3 — Android autofill | `AutofillService`, save/update prompts | **Not started** |
+| Phase 3 — Android autofill | `AutofillService`, save/update prompts | **Done** (device matrix still needed before release) |
 | Phase 4 — Portable backup | Encrypted export, restore, verification | **Done** (ahead of PRD order — see §2) |
 | Phase 5 — Passkeys + Credential Provider | Android 14+ provider | **Not started** |
 | Phase 6 — Optional connected backup | Network policy, remote backup | **Not started** (deliberately) |
@@ -49,8 +49,8 @@ encryption key directly from the master password, which means:
 
 Fixing that is the envelope hierarchy in §3. Once the DEK exists, export and restore
 are a few hundred lines, and they were written immediately to prove the hierarchy
-works. Autofill is next and is unaffected by the reordering — it depends on the
-session and repository, both of which are now stable.
+works. Autofill followed that work and reused the same stable session and repository
+boundaries.
 
 ---
 
@@ -133,17 +133,17 @@ PRD's Service / Account / CredentialSecret / SecurityMeta entities into one row 
 grouping is a list-building concern, and a separate `services` table buys referential
 tidiness at the cost of joins and migrations nothing yet needs.
 
-The split becomes worth doing when a service acquires attributes of its own — an icon,
-multiple URI bindings, an Android package association. That is a Phase 3 requirement
-(autofill has to match packages and origins to services), so **the entity split is
-scheduled as the first task of Phase 3**, not deferred indefinitely.
+The split became worth doing when a service acquired attributes of its own — multiple
+URI bindings and Android package associations for Autofill. Schema v3 promotes
+services and bindings into first-class rows while keeping `serviceName` denormalised
+on entries for fast list rendering and search.
 
 | PRD entity | Current representation |
 |---|---|
-| Service | `serviceName` column + `groupLabel` |
+| Service | `services` row + denormalised `serviceName` / `groupLabel` |
 | Account | The row itself |
 | CredentialSecret | `encryptedUsername` / `encryptedPassword` / `encryptedNotes` + `payloadSchema` |
-| UriBinding | `website` only — **insufficient for autofill**, split in Phase 3 |
+| UriBinding | `uri_bindings` rows for web hosts and Android package names |
 | SecurityMeta | `strengthScore`, `reuseHash`, `passwordUpdatedAt` |
 | VaultMeta | `VaultPrefs` (KDF params, wrapped DEK, backup state) |
 | AuditLocal | Not built — `lastBackupAt` is the only event recorded |
@@ -159,7 +159,7 @@ without the vault key, and cannot be compared across vaults.
 ```json
 {
   "format": "safevault.backup",
-  "version": 1,
+  "version": 2,
   "createdAt": 1787573864394,
   "entryCount": 3,
   "kdf": { "version": 1, "algorithm": "PBKDF2WithHmacSHA256",
@@ -172,11 +172,13 @@ The header is cleartext because restore must read the KDF parameters before it c
 ask for a passphrase, and must be able to say *"this backup holds 3 entries"* before
 the user commits. Nothing in the header is vault content.
 
-The payload holds the **DEK and every record** under one GCM tag. Carrying the DEK is
-what lets restore re-wrap one key for the new device rather than re-encrypting the
-vault, and the single tag means a truncated or edited file fails as a unit — the
-PRD's *"verify authentication tag before importing any records"* is structural rather
-than a check someone has to remember to write.
+The payload holds the **DEK, every record, services and URI bindings** under one GCM
+tag. Carrying the DEK is what lets restore re-wrap one key for the new device rather
+than re-encrypting the vault, and the single tag means a truncated or edited file
+fails as a unit — the PRD's *"verify authentication tag before importing any
+records"* is structural rather than a check someone has to remember to write. Format
+v1 backups remain readable; restore rebuilds service rows from each entry's
+denormalised `serviceName` and imports no bindings because v1 never knew them.
 
 No Keystore material is ever exported. The biometric envelope is device-bound; a
 restored vault re-enrols.
@@ -234,28 +236,39 @@ Import deliberately *adds* rather than replaces — restore is the operation tha
 replaces — and it ends on a blocking dialog about deleting the CSV, since that
 plaintext file is the one part of the flow the app cannot clean up itself.
 
-## 7. Phase 3 — Android autofill (next)
+## 7. Phase 3 — Android autofill as completed
 
-Exit criterion: filling credentials into Chrome and a representative app matrix, with
-a locked vault demanding authentication before releasing a dataset.
+Implementation exit criterion met in code: an `AutofillService` can fill matching
+credentials, a locked vault returns only an authentication response, and submitted
+credentials can be saved or used to update an existing account. Release evidence still
+needs the compatibility matrix in §9.
 
-1. **Split Service and UriBinding out of `VaultEntry`.** Autofill matches on Android
-   package names and web origins; one free-text `website` column cannot express
-   "this service is `com.google.android.gm` *and* `mail.google.com` *and*
-   `accounts.google.com`". Room migration 2→3.
-2. **`AutofillService` implementation** — dataset construction from non-secret
-   metadata, `FillResponse` with an authentication `IntentSender` when
-   `SessionManager` is locked.
-3. **Authentication handoff** — a locked vault presents an unlock action, never
-   plaintext. Reuse `UnlockActivity` in a result-returning mode.
-4. **Save / update prompts** — `SaveInfo` on submitted forms, mapped to an existing
-   service where one matches.
-5. **Inline suggestions** (API 30+) where the keyboard supports them.
-6. **`minSdk` decision.** Autofill needs API 26; the app is currently 24. Either
-   raise to 26 or gate the service with `@RequiresApi`. **Recommendation: raise to
-   26** — API 24/25 is a rounding error of live devices and gating adds a permanent
-   branch to a security-sensitive path.
-7. **Compatibility matrix testing** — Chrome, a WebView app, a native login form.
+1. **Split Service and UriBinding out of `VaultEntry`.** Implemented with
+   [VaultService.kt](app/src/main/java/com/safevault/app/data/VaultService.kt),
+   [UriBinding.kt](app/src/main/java/com/safevault/app/data/UriBinding.kt), schema
+   v3, and Room migration 2→3. Existing `website` values are back-filled into
+   bindings by [ServiceBackfill.kt](app/src/main/java/com/safevault/app/data/ServiceBackfill.kt)
+   after database open so URL parsing stays in one Kotlin implementation.
+2. **`AutofillService` implementation.** [SafeVaultAutofillService.kt](app/src/main/java/com/safevault/app/autofill/SafeVaultAutofillService.kt)
+   parses form structures, refuses SafeVault's own package, constructs datasets
+   only while the session is unlocked, and returns a locked authentication response
+   before any database lookup.
+3. **Authentication handoff.** [AutofillAuthActivity.kt](app/src/main/java/com/safevault/app/autofill/AutofillAuthActivity.kt)
+   reuses [UnlockActivity.kt](app/src/main/java/com/safevault/app/ui/UnlockActivity.kt)
+   in result mode, then returns an authenticated `FillResponse`.
+4. **Save / update prompts.** `SaveInfo` is included on locked, unlocked and
+   post-auth responses. [AutofillSaveActivity.kt](app/src/main/java/com/safevault/app/autofill/AutofillSaveActivity.kt)
+   maps the submitted target to an existing service when possible, updates an
+   exact username match, and learns a web/package binding from the accepted save.
+   Change-password forms prefer a submitted `NEW_PASSWORD` field over the current
+   password field.
+5. **Inline suggestions.** [InlinePresentations.kt](app/src/main/java/com/safevault/app/autofill/InlinePresentations.kt)
+   builds API 30+ inline presentations where the keyboard advertises a supported
+   spec; presentations show only title/username, never a password.
+6. **`minSdk` decision.** Raised to API 26, avoiding a permanent compatibility
+   branch inside the autofill path.
+7. **Compatibility matrix testing.** Still pending on device/emulator: Chrome,
+   a WebView app, and a native login form.
 
 Distinct risk worth stating up front: autofill is the first feature that hands
 secrets to *another process*. Dataset construction must never include a secret the
@@ -285,7 +298,7 @@ device key model are mature.
 
 ## 9. Testing status
 
-76 JVM tests, all passing (`./gradlew testDebugUnitTest`):
+123 JVM tests, all passing (`./gradlew testDebugUnitTest`):
 
 | Suite | Covers |
 |---|---|
@@ -296,18 +309,23 @@ device key model are mature.
 | `PasswordGeneratorTest` | Length, class coverage and exclusion, clamping, entropy, ambiguous characters, uniqueness |
 | `PassphraseGeneratorTest` | Wordlist size/distinctness/charset, word count, separator, capitalisation, appended number, exact entropy |
 | `CsvImportTest` | Quoted fields, doubled quotes, embedded newlines, CRLF, BOM; Chrome/Bitwarden/LastPass column detection, exact-over-substring matching; skipped-row accounting, host extraction |
+| `FieldClassifierTest` | Autofill hint precedence, browser/native password detection, new-password detection, and negative cases for search, OTP and card fields |
+| `UriNormalizerTest` | Host/package normalisation, public-suffix guardrails, phishing-lookalike rejection, exact/subdomain matching |
+| `SaveCandidateTest` | Save-path password choice, including change-password forms preferring the new password |
+| `VaultDatabaseMigrationTest` | Schema 2→3 migration, service collapse, orphan prevention, binding constraints and cascade behaviour |
 
 **Gaps, in priority order:**
 
 1. **No instrumentation tests.** Biometric enrolment, `KeyPermanentlyInvalidatedException`
-   handling, process death, and the Room migration all run only on-device and were
-   verified by hand. The migration especially deserves an automated test — a silent
-   record drop is a release blocker by the PRD's own list.
-2. **`LegacyVaultMigration` has no automated coverage.** Its resumability argument is
+   handling, process death, and the Autofill platform contract still need device
+   tests.
+2. **No Autofill compatibility matrix evidence.** The service needs manual or
+   instrumented validation in Chrome, a WebView app and a native login form before
+   release.
+3. **`LegacyVaultMigration` has no automated coverage.** Its resumability argument is
    sound on paper and untested in code. Needs a test that interrupts between the two
    commits and asserts the vault still opens.
-3. **No fuzz/corruption suite** beyond the hand-written backup cases.
-4. **No compatibility matrix** — one emulator (Pixel 6, API 34) is not a matrix.
+4. **No fuzz/corruption suite** beyond the hand-written backup cases.
 
 ---
 
@@ -318,8 +336,8 @@ device key model are mature.
 | Plaintext credential in logs, crash reports, backups or temp files | **Clear** — backup file verified free of entry plaintext; nothing logs secrets |
 | Network request during Network Lock | **Structurally impossible** — no `INTERNET` permission |
 | Backup that cannot be restored on a clean device | **Verified** — full uninstall/restore drill passes |
-| Autofill path exposing a locked credential | **N/A** — not built yet; the gating requirement is written into §7 |
-| Migration that can silently drop or corrupt records | **Designed against, not yet proven** — see testing gap 2 |
+| Autofill path exposing a locked credential | **Designed against in code** — locked fill responses do not query the vault; device matrix still pending |
+| Migration that can silently drop or corrupt records | **Partly proven** — schema 2→3 is JVM-tested; legacy content migration still lacks automated interruption coverage |
 | Cloud feature where server compromise reveals plaintext | **N/A** — no server |
 
 Independent security review remains a release requirement before any connected

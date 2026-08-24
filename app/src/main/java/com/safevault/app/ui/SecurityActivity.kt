@@ -1,7 +1,10 @@
 package com.safevault.app.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
+import android.view.autofill.AutofillManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -78,6 +81,62 @@ class SecurityActivity : SecureActivity() {
         if (isFinishing) return
         refreshHealth()
         refreshBackupStatus()
+        // Autofill is enabled in system settings, not here, so the state has to
+        // be re-read every time this screen comes back rather than cached.
+        refreshAutofillStatus()
+    }
+
+    // -- Autofill -----------------------------------------------------------
+
+    /**
+     * Reflects the *system's* view of who the autofill service is.
+     *
+     * There is no in-app switch for this on purpose. Only the user, in Settings,
+     * can appoint an autofill service — an app cannot appoint itself — so a
+     * switch here would be a control that does not control anything. The button
+     * opens the settings screen and the text says what is currently true.
+     */
+    private fun refreshAutofillStatus() {
+        val manager = getSystemService(AutofillManager::class.java)
+        if (manager == null || !manager.isAutofillSupported) {
+            binding.tvAutofillNote.setText(R.string.autofill_unsupported_note)
+            binding.btnAutofill.isEnabled = false
+            return
+        }
+
+        val enabled = manager.hasEnabledAutofillServices()
+        binding.tvAutofillNote.setText(
+            if (enabled) R.string.autofill_enabled_note else R.string.autofill_disabled_note
+        )
+        binding.btnAutofill.isEnabled = true
+        binding.btnAutofill.setText(
+            if (enabled) R.string.autofill_open_settings else R.string.autofill_enable
+        )
+        binding.btnAutofill.setOnClickListener {
+            if (enabled) openAutofillSettings() else requestAutofillService(manager)
+        }
+    }
+
+    /**
+     * Asks the system to make SafeVault the autofill service. The dialog is the
+     * platform's, and declining it is a normal outcome rather than an error.
+     */
+    private fun requestAutofillService(manager: AutofillManager) {
+        val intent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
+            .setData(Uri.parse("package:$packageName"))
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            openAutofillSettings()
+        }
+    }
+
+    private fun openAutofillSettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.autofill_unsupported_note, Toast.LENGTH_LONG).show()
+        }
     }
 
     // -- Health -------------------------------------------------------------

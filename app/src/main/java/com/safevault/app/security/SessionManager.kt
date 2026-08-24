@@ -53,4 +53,30 @@ object SessionManager {
         }
         return false
     }
+
+    /**
+     * Applies the auto-lock timeout without waiting for a foreground transition.
+     *
+     * Every other caller learns the session has expired because an activity came
+     * back to the front. Autofill has no such moment: the vault is backgrounded,
+     * the user is in Chrome, and the service is asked for datasets in a process
+     * that may have had no visible activity for an hour. Reading [isUnlocked]
+     * there would report a session that only *looks* alive because nothing has
+     * resumed to retire it — and would hand out secrets on the strength of it.
+     *
+     * Unlike [onEnterForeground] this does not clear the background timestamp: it
+     * is a check, not a lifecycle event, and the session is still in the
+     * background after it runs.
+     *
+     * @return true if the vault is unlocked *and* still within its timeout.
+     */
+    fun isUnlockedWithin(autoLockMs: Long): Boolean {
+        if (!isUnlocked) return false
+        val since = backgroundedAt
+        if (since > 0L && System.currentTimeMillis() - since >= autoLockMs) {
+            lock()
+            return false
+        }
+        return true
+    }
 }

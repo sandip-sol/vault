@@ -185,4 +185,30 @@
 
     <string name="network_status">Network Lock — permanently on</string>
     <string name="privacy_detail">This build does not declare the INTERNET permission, so the operating system itself prevents any network access. No analytics, no sync, no breach lookups. Backups go only where you point the file picker.</string>
+
+    <!-- Autofill -->
+    <string name="autofill">Autofill</string>
+    <string name="autofill_unlock_title">Unlock SafeVault</string>
+    <string name="autofill_unlock_subtitle">Authenticate to see your saved logins</string>
+    <string name="autofill_no_username">No username saved</string>
+    <string name="autofill_save_failed">SafeVault could not read that form.</string>
+    <string name="autofill_save_nothing">There was no password to save.</string>
+    <string name="autofill_save_title">Save to SafeVault?</string>
+    <string name="autofill_update_title">Update this login?</string>
+    <string name="autofill_save_new">A new entry will be added for %1$s.</string>
+    <string name="autofill_save_new_no_user">A new entry will be added, with no username.</string>
+    <string name="autofill_save_update">The saved password for %1$s will be replaced.</string>
+    <string name="autofill_save_target_web">Will fill on %1$s and its subdomains</string>
+    <string name="autofill_save_target_app">Will fill in the app %1$s</string>
+    <string name="autofill_saved">Saved to SafeVault</string>
+    <string name="autofill_updated">Login updated</string>
+    <string name="autofill_save_error">Could not save that login.</string>
+
+    <string name="autofill_setting">Autofill service</string>
+    <string name="autofill_enabled_note">SafeVault is your autofill service. Logins are offered in other apps and in the browser, and a locked vault asks for authentication before releasing anything.</string>
+    <string name="autofill_disabled_note">Let SafeVault fill logins in other apps and in the browser. A locked vault reveals nothing — not even whether it has a match — until you authenticate.</string>
+    <string name="autofill_unsupported_note">This device does not offer an autofill service setting.</string>
+    <string name="autofill_enable">Turn on</string>
+    <string name="autofill_turn_off">Turn off</string>
+    <string name="autofill_open_settings">Open settings</string>
 </resources>

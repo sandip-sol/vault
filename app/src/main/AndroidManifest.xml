@@ -58,5 +58,51 @@
         <activity
             android:name=".ui.ImportActivity"
             android:exported="false" />
+
+        <!--
+          Autofill.
+
+          The service is exported and guarded by BIND_AUTOFILL_SERVICE, which
+          only the system holds: exported makes it bindable, and the permission
+          makes the system the only thing that can bind it.
+        -->
+        <service
+            android:name=".autofill.SafeVaultAutofillService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service" />
+        </service>
+
+        <!--
+          Both autofill activities are started by the system through a
+          PendingIntent, which does not require them to be exported — the
+          PendingIntent itself carries the right to launch them. Leaving them
+          unexported means nothing else on the device can invoke the unlock or
+          save flow directly.
+
+          excludeFromRecents keeps them out of the recents list, where they would
+          appear as a stray SafeVault card over the app the user was actually
+          using. They are deliberately *not* android:noHistory: both launch the
+          unlock screen for a result, and noHistory would destroy them the moment
+          they left the foreground, so the result would come back to nothing.
+          Each finishes itself explicitly instead.
+        -->
+        <activity
+            android:name=".autofill.AutofillAuthActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.SafeVault.Transparent" />
+
+        <activity
+            android:name=".autofill.AutofillSaveActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.SafeVault.Transparent" />
     </application>
 </manifest>

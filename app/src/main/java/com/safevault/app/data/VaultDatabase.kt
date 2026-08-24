@@ -7,7 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [VaultEntry::class], version = 2, exportSchema = false)
+@Database(
+    entities = [VaultEntry::class, VaultService::class, UriBinding::class],
+    version = 3,
+    exportSchema = true
+)
 abstract class VaultDatabase : RoomDatabase() {
 
     abstract fun vaultDao(): VaultDao
@@ -41,6 +45,91 @@ abstract class VaultDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v2 -> v3: promotes the `serviceName` text column into a real `services`
+         * table, and gives a service somewhere to keep the package names and web
+         * hosts that autofill matches on (`uri_bindings`).
+         *
+         * Every statement here is additive or a back-fill; nothing drops a column
+         * or a row. `serviceName` stays on `entries` as the denormalised display
+         * copy — see the note on [VaultEntry.serviceName].
+         *
+         * Two things are deliberately *not* done here:
+         *
+         *  - Bindings are not derived from the `website` column in SQL. Turning a
+         *    URL into a host is [com.safevault.app.autofill.UriNormalizer]'s job,
+         *    and a second, cruder implementation in SQLite string functions is
+         *    exactly how a fill ends up on the wrong domain. The back-fill runs in
+         *    Kotlin at first unlock — see [ServiceBackfill].
+         *  - Nothing is re-encrypted. This migration touches no ciphertext, so it
+         *    needs no vault key and can run before unlock.
+         */
+        // Visible to tests: VaultDatabaseMigrationTest builds a real v2 database
+        // from the exported 2.json schema and replays this against it.
+        @androidx.annotation.VisibleForTesting
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `services` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL COLLATE NOCASE, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_services_name` " +
+                        "ON `services` (`name`)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `uri_bindings` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`serviceId` INTEGER NOT NULL, " +
+                        "`kind` INTEGER NOT NULL, " +
+                        "`value` TEXT NOT NULL, " +
+                        "`source` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "FOREIGN KEY(`serviceId`) REFERENCES `services`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_uri_bindings_serviceId` " +
+                        "ON `uri_bindings` (`serviceId`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_uri_bindings_value` " +
+                        "ON `uri_bindings` (`value`)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_uri_bindings_serviceId_kind_value` " +
+                        "ON `uri_bindings` (`serviceId`, `kind`, `value`)"
+                )
+
+                db.execSQL("ALTER TABLE entries ADD COLUMN serviceId INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_entries_serviceId` " +
+                        "ON `entries` (`serviceId`)"
+                )
+
+                // An entry with no service already displays under its title — the
+                // list falls back to it. Making that explicit costs nothing
+                // visually and means every credential is addressable by autofill
+                // rather than only the grouped ones.
+                db.execSQL("UPDATE entries SET serviceName = title WHERE serviceName = ''")
+
+                val now = System.currentTimeMillis()
+                db.execSQL(
+                    "INSERT OR IGNORE INTO services (name, createdAt, updatedAt) " +
+                        "SELECT DISTINCT serviceName, $now, $now FROM entries " +
+                        "WHERE serviceName != ''"
+                )
+                db.execSQL(
+                    "UPDATE entries SET serviceId = COALESCE(" +
+                        "(SELECT s.id FROM services s WHERE s.name = entries.serviceName), 0)"
+                )
+            }
+        }
+
         fun get(context: Context): VaultDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -48,7 +137,7 @@ abstract class VaultDatabase : RoomDatabase() {
                     VaultDatabase::class.java,
                     "safe_vault.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

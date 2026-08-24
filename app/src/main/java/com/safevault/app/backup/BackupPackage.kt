@@ -1,7 +1,9 @@
 package com.safevault.app.backup
 
 import android.util.Base64
+import com.safevault.app.data.UriBinding
 import com.safevault.app.data.VaultEntry
+import com.safevault.app.data.VaultService
 import com.safevault.app.security.CryptoManager
 import com.safevault.app.security.KeyDerivation
 import org.json.JSONArray
@@ -36,7 +38,17 @@ import javax.crypto.SecretKey
 object BackupPackage {
 
     const val FORMAT = "safevault.backup"
-    const val VERSION = 1
+    /**
+     * Bumped to 2 when services and URI bindings became their own tables.
+     *
+     * v1 files still restore: they simply carry no services, and the entries in
+     * them still have their `serviceName` text, so [rebuildServices] reconstructs
+     * the service rows the same way the 2 -> 3 database migration does. A backup
+     * taken before Phase 3 therefore restores into a Phase 3 vault with grouping
+     * intact and no bindings — which is exactly what it knew.
+     */
+    const val VERSION = 2
+    private val READABLE_VERSIONS = setOf(1, 2)
     const val FILE_EXTENSION = "svbak"
     const val MIME_TYPE = "application/octet-stream"
 
@@ -52,7 +64,13 @@ object BackupPackage {
         val kdf: KeyDerivation.KdfParams
     )
 
-    data class Contents(val dek: SecretKey, val vaultCreatedAt: Long, val entries: List<VaultEntry>)
+    data class Contents(
+        val dek: SecretKey,
+        val vaultCreatedAt: Long,
+        val entries: List<VaultEntry>,
+        val services: List<VaultService>,
+        val bindings: List<UriBinding>
+    )
 
     // ── Writing ────────────────────────────────────────────────────────────
 
@@ -60,7 +78,9 @@ object BackupPackage {
         passphrase: CharArray,
         dek: SecretKey,
         vaultCreatedAt: Long,
-        entries: List<VaultEntry>
+        entries: List<VaultEntry>,
+        services: List<VaultService>,
+        bindings: List<UriBinding>
     ): ByteArray {
         val kdf = KeyDerivation.newParams(KeyDerivation.BACKUP_ITERATIONS)
         val kek = KeyDerivation.deriveKek(passphrase, kdf)
@@ -69,6 +89,8 @@ object BackupPackage {
             put("dek", Base64.encodeToString(dek.encoded, Base64.NO_WRAP))
             put("vaultCreatedAt", vaultCreatedAt)
             put("entries", JSONArray().apply { entries.forEach { put(toJson(it)) } })
+            put("services", JSONArray().apply { services.forEach { put(toJson(it)) } })
+            put("bindings", JSONArray().apply { bindings.forEach { put(toJson(it)) } })
         }
 
         val envelope = JSONObject().apply {
@@ -95,7 +117,7 @@ object BackupPackage {
             throw MalformedBackupException("Not a SafeVault backup file")
         }
         val version = json.optInt("version", -1)
-        if (version != VERSION) {
+        if (version !in READABLE_VERSIONS) {
             throw MalformedBackupException("Unsupported backup version $version")
         }
         val kdfJson = json.optJSONObject("kdf")
@@ -140,18 +162,70 @@ object BackupPackage {
 
         val dekBytes = Base64.decode(inner.getString("dek"), Base64.NO_WRAP)
         val array = inner.optJSONArray("entries") ?: JSONArray()
-        val entries = (0 until array.length()).map { fromJson(array.getJSONObject(it)) }
+        val entries = (0 until array.length()).map { entryFromJson(array.getJSONObject(it)) }
 
         if (entries.size != header.entryCount) {
             throw MalformedBackupException(
                 "Backup claims ${header.entryCount} entries but carries ${entries.size}"
             )
         }
+
+        val servicesJson = inner.optJSONArray("services") ?: JSONArray()
+        val bindingsJson = inner.optJSONArray("bindings") ?: JSONArray()
+        var services = (0 until servicesJson.length())
+            .map { serviceFromJson(servicesJson.getJSONObject(it)) }
+        var bindings = (0 until bindingsJson.length())
+            .map { bindingFromJson(bindingsJson.getJSONObject(it)) }
+        var restoredEntries = entries
+
+        if (header.version < 2 || services.isEmpty()) {
+            // A pre-Phase-3 file, or one whose entries were never grouped. The
+            // entry rows still carry `serviceName`, so services are recoverable
+            // from them by the same rule the database migration uses.
+            val rebuilt = rebuildServices(entries)
+            restoredEntries = rebuilt.first
+            services = rebuilt.second
+            bindings = emptyList()
+        }
+
+        // A binding whose service did not survive can only match nothing, and
+        // would violate the foreign key on insert.
+        val serviceIds = services.map { it.id }.toSet()
+        bindings = bindings.filter { it.serviceId in serviceIds }
+
         return Contents(
             dek = CryptoManager.keyFromBytes(dekBytes),
             vaultCreatedAt = inner.optLong("vaultCreatedAt", 0L),
-            entries = entries
+            entries = restoredEntries,
+            services = services,
+            bindings = bindings
         )
+    }
+
+    /**
+     * Reconstructs service rows from the denormalised `serviceName` on each
+     * entry, mirroring the SQL in the 2 -> 3 migration: an entry with no service
+     * is filed under its own title, which is already what the list shows it as.
+     *
+     * @return the entries with `serviceId` filled in, and the services they name.
+     */
+    private fun rebuildServices(
+        entries: List<VaultEntry>
+    ): Pair<List<VaultEntry>, List<VaultService>> {
+        val now = System.currentTimeMillis()
+        val idsByName = linkedMapOf<String, Long>()
+        val named = entries.map { entry ->
+            val name = entry.serviceName.ifBlank { entry.title }.trim()
+            if (name.isEmpty()) return@map entry.copy(serviceId = 0L, serviceName = "")
+            val id = idsByName.getOrPut(name.lowercase()) { (idsByName.size + 1).toLong() }
+            entry.copy(serviceId = id, serviceName = name)
+        }
+        val names = named.filter { it.serviceId > 0 }
+            .associateBy({ it.serviceId }, { it.serviceName })
+        val services = idsByName.values.map { id ->
+            VaultService(id = id, name = names[id].orEmpty(), createdAt = now, updatedAt = now)
+        }
+        return named to services
     }
 
     // ── Row mapping ────────────────────────────────────────────────────────
@@ -159,6 +233,7 @@ object BackupPackage {
     private fun toJson(e: VaultEntry) = JSONObject().apply {
         put("id", e.id)
         put("title", e.title)
+        put("serviceId", e.serviceId)
         put("serviceName", e.serviceName)
         put("website", e.website)
         put("username", e.encryptedUsername)
@@ -174,9 +249,42 @@ object BackupPackage {
         put("payloadSchema", e.payloadSchema)
     }
 
-    private fun fromJson(o: JSONObject) = VaultEntry(
+    private fun toJson(s: VaultService) = JSONObject().apply {
+        put("id", s.id)
+        put("name", s.name)
+        put("createdAt", s.createdAt)
+        put("updatedAt", s.updatedAt)
+    }
+
+    private fun toJson(b: UriBinding) = JSONObject().apply {
+        put("id", b.id)
+        put("serviceId", b.serviceId)
+        put("kind", b.kind)
+        put("value", b.value)
+        put("source", b.source)
+        put("createdAt", b.createdAt)
+    }
+
+    private fun serviceFromJson(o: JSONObject) = VaultService(
+        id = o.optLong("id", 0L),
+        name = o.optString("name"),
+        createdAt = o.optLong("createdAt", 0L),
+        updatedAt = o.optLong("updatedAt", 0L)
+    )
+
+    private fun bindingFromJson(o: JSONObject) = UriBinding(
+        id = o.optLong("id", 0L),
+        serviceId = o.optLong("serviceId", 0L),
+        kind = o.optInt("kind", UriBinding.KIND_WEB),
+        value = o.optString("value"),
+        source = o.optInt("source", UriBinding.SOURCE_MANUAL),
+        createdAt = o.optLong("createdAt", 0L)
+    )
+
+    private fun entryFromJson(o: JSONObject) = VaultEntry(
         id = o.optLong("id", 0L),
         title = o.optString("title"),
+        serviceId = o.optLong("serviceId", 0L),
         serviceName = o.optString("serviceName"),
         website = o.optString("website"),
         encryptedUsername = o.optString("username"),
