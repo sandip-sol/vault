@@ -1,6 +1,7 @@
 package com.safevault.app.backup
 
 import com.safevault.app.data.UriBinding
+import com.safevault.app.data.PasskeyCredential
 import com.safevault.app.data.VaultEntry
 import com.safevault.app.data.VaultService
 import com.safevault.app.security.CryptoManager
@@ -34,9 +35,10 @@ class BackupPackageTest {
         entries: List<VaultEntry>,
         services: List<VaultService> = sampleServices(),
         bindings: List<UriBinding> = sampleBindings(),
+        passkeys: List<PasskeyCredential> = emptyList(),
         dek: javax.crypto.SecretKey = CryptoManager.newDataKey(),
         vaultCreatedAt: Long = 0L
-    ) = BackupPackage.write(passphrase, dek, vaultCreatedAt, entries, services, bindings)
+    ) = BackupPackage.write(passphrase, dek, vaultCreatedAt, entries, services, bindings, passkeys)
 
     private fun sampleEntries(count: Int = 3) = (1..count).map { i ->
         VaultEntry(
@@ -57,6 +59,23 @@ class BackupPackageTest {
             lastUsedAt = 0L
         )
     }
+
+    private fun samplePasskeys() = listOf(
+        PasskeyCredential(
+            id = 1,
+            serviceId = 1,
+            rpId = "example1.com",
+            credentialId = "cred-1",
+            username = "user@example1.com",
+            displayName = "Example User",
+            encryptedUserHandle = "v2.dXNlci1oYW5kbGU=",
+            encryptedPrivateKey = "v2.cHJpdmF0ZS1rZXk=",
+            signCount = 7,
+            createdAt = 10,
+            updatedAt = 20,
+            lastUsedAt = 30
+        )
+    )
 
     @Test
     fun `round trips the vault key and every entry`() {
@@ -182,6 +201,29 @@ class BackupPackageTest {
         // The link between an entry and its service has to survive, or a restored
         // vault groups correctly and fills nothing.
         assertEquals(sampleEntries().map { it.serviceId }, opened.entries.map { it.serviceId })
+    }
+
+    @Test
+    fun `round trips passkeys without exposing private key material`() {
+        val bytes = write(sampleEntries(), passkeys = samplePasskeys())
+        val text = String(bytes, Charsets.UTF_8)
+
+        assertTrue("Passkey usernames live inside the sealed payload", !text.contains("user@example1.com"))
+        assertTrue("Passkey private keys live inside the sealed payload", !text.contains("cHJpdmF0ZS1rZXk"))
+
+        val opened = BackupPackage.open(bytes, passphrase)!!
+        assertEquals(samplePasskeys().map { it.credentialId }, opened.passkeys.map { it.credentialId })
+        assertEquals(samplePasskeys().map { it.encryptedPrivateKey }, opened.passkeys.map { it.encryptedPrivateKey })
+    }
+
+    @Test
+    fun `drops a passkey whose service did not survive`() {
+        val orphan = samplePasskeys().first().copy(serviceId = 99)
+        val bytes = write(sampleEntries(), passkeys = listOf(orphan))
+
+        val opened = BackupPackage.open(bytes, passphrase)!!
+
+        assertTrue(opened.passkeys.isEmpty())
     }
 
     @Test

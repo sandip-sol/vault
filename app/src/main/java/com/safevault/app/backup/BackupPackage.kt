@@ -1,6 +1,7 @@
 package com.safevault.app.backup
 
 import android.util.Base64
+import com.safevault.app.data.PasskeyCredential
 import com.safevault.app.data.UriBinding
 import com.safevault.app.data.VaultEntry
 import com.safevault.app.data.VaultService
@@ -39,7 +40,8 @@ object BackupPackage {
 
     const val FORMAT = "safevault.backup"
     /**
-     * Bumped to 2 when services and URI bindings became their own tables.
+     * Bumped to 2 when services and URI bindings became their own tables, and
+     * to 3 when passkeys became a first-class encrypted secret type.
      *
      * v1 files still restore: they simply carry no services, and the entries in
      * them still have their `serviceName` text, so [rebuildServices] reconstructs
@@ -47,8 +49,8 @@ object BackupPackage {
      * taken before Phase 3 therefore restores into a Phase 3 vault with grouping
      * intact and no bindings — which is exactly what it knew.
      */
-    const val VERSION = 2
-    private val READABLE_VERSIONS = setOf(1, 2)
+    const val VERSION = 3
+    private val READABLE_VERSIONS = setOf(1, 2, 3)
     const val FILE_EXTENSION = "svbak"
     const val MIME_TYPE = "application/octet-stream"
 
@@ -69,7 +71,8 @@ object BackupPackage {
         val vaultCreatedAt: Long,
         val entries: List<VaultEntry>,
         val services: List<VaultService>,
-        val bindings: List<UriBinding>
+        val bindings: List<UriBinding>,
+        val passkeys: List<PasskeyCredential>
     )
 
     // ── Writing ────────────────────────────────────────────────────────────
@@ -80,7 +83,8 @@ object BackupPackage {
         vaultCreatedAt: Long,
         entries: List<VaultEntry>,
         services: List<VaultService>,
-        bindings: List<UriBinding>
+        bindings: List<UriBinding>,
+        passkeys: List<PasskeyCredential> = emptyList()
     ): ByteArray {
         val kdf = KeyDerivation.newParams(KeyDerivation.BACKUP_ITERATIONS)
         val kek = KeyDerivation.deriveKek(passphrase, kdf)
@@ -91,6 +95,7 @@ object BackupPackage {
             put("entries", JSONArray().apply { entries.forEach { put(toJson(it)) } })
             put("services", JSONArray().apply { services.forEach { put(toJson(it)) } })
             put("bindings", JSONArray().apply { bindings.forEach { put(toJson(it)) } })
+            put("passkeys", JSONArray().apply { passkeys.forEach { put(toJson(it)) } })
         }
 
         val envelope = JSONObject().apply {
@@ -176,6 +181,12 @@ object BackupPackage {
             .map { serviceFromJson(servicesJson.getJSONObject(it)) }
         var bindings = (0 until bindingsJson.length())
             .map { bindingFromJson(bindingsJson.getJSONObject(it)) }
+        val passkeysJson = inner.optJSONArray("passkeys") ?: JSONArray()
+        var passkeys = if (header.version >= 3) {
+            (0 until passkeysJson.length()).map { passkeyFromJson(passkeysJson.getJSONObject(it)) }
+        } else {
+            emptyList()
+        }
         var restoredEntries = entries
 
         if (header.version < 2 || services.isEmpty()) {
@@ -192,13 +203,15 @@ object BackupPackage {
         // would violate the foreign key on insert.
         val serviceIds = services.map { it.id }.toSet()
         bindings = bindings.filter { it.serviceId in serviceIds }
+        passkeys = passkeys.filter { it.serviceId in serviceIds }
 
         return Contents(
             dek = CryptoManager.keyFromBytes(dekBytes),
             vaultCreatedAt = inner.optLong("vaultCreatedAt", 0L),
             entries = restoredEntries,
             services = services,
-            bindings = bindings
+            bindings = bindings,
+            passkeys = passkeys
         )
     }
 
@@ -265,6 +278,22 @@ object BackupPackage {
         put("createdAt", b.createdAt)
     }
 
+    private fun toJson(p: PasskeyCredential) = JSONObject().apply {
+        put("id", p.id)
+        put("serviceId", p.serviceId)
+        put("rpId", p.rpId)
+        put("credentialId", p.credentialId)
+        put("username", p.username)
+        put("displayName", p.displayName)
+        put("userHandle", p.encryptedUserHandle)
+        put("privateKey", p.encryptedPrivateKey)
+        put("signCount", p.signCount)
+        put("createdAt", p.createdAt)
+        put("updatedAt", p.updatedAt)
+        put("lastUsedAt", p.lastUsedAt)
+        put("payloadSchema", p.payloadSchema)
+    }
+
     private fun serviceFromJson(o: JSONObject) = VaultService(
         id = o.optLong("id", 0L),
         name = o.optString("name"),
@@ -279,6 +308,22 @@ object BackupPackage {
         value = o.optString("value"),
         source = o.optInt("source", UriBinding.SOURCE_MANUAL),
         createdAt = o.optLong("createdAt", 0L)
+    )
+
+    private fun passkeyFromJson(o: JSONObject) = PasskeyCredential(
+        id = o.optLong("id", 0L),
+        serviceId = o.optLong("serviceId", 0L),
+        rpId = o.optString("rpId"),
+        credentialId = o.optString("credentialId"),
+        username = o.optString("username"),
+        displayName = o.optString("displayName"),
+        encryptedUserHandle = o.optString("userHandle"),
+        encryptedPrivateKey = o.optString("privateKey"),
+        signCount = o.optLong("signCount", 0L),
+        createdAt = o.optLong("createdAt", 0L),
+        updatedAt = o.optLong("updatedAt", 0L),
+        lastUsedAt = o.optLong("lastUsedAt", 0L),
+        payloadSchema = o.optInt("payloadSchema", CryptoManager.SCHEMA_CURRENT)
     )
 
     private fun entryFromJson(o: JSONObject) = VaultEntry(

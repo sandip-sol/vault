@@ -25,6 +25,7 @@ See [ROADMAP.md](ROADMAP.md) for architecture rationale, phase plan and open gap
 | 🎲 Generator | Passwords (length and character classes) and passphrases (1024-word list, exactly 10 bits per word), with live entropy and session-only history |
 | 📥 CSV import | Chrome, Bitwarden, LastPass, 1Password, Keeper or any CSV with a header — columns detected automatically |
 | 🧩 Android Autofill | Fills matching logins in apps and browsers. A locked vault shows only an unlock action until you authenticate |
+| 🔐 Credential Provider | Android 14+ Credential Manager provider for passwords and passkeys, backed by the same offline vault key |
 | 📋 Clipboard | Flagged sensitive, and cleared after 30s if untouched |
 | ⏱️ Auto-lock | Process-wide, configurable 30s–5m |
 | 🚫 Screenshot blocking | `FLAG_SECURE` on every screen |
@@ -78,7 +79,7 @@ Android Studio (Koala or newer), or from the command line:
 
 ```bash
 ./gradlew assembleDebug        # APK at app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # 123 JVM tests
+./gradlew testDebugUnitTest    # 129 JVM tests
 ```
 
 AGP 8.5.2, Kotlin 1.9.24, min SDK 26 / target SDK 34. Biometric unlock needs a

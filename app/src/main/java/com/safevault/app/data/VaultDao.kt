@@ -95,6 +95,32 @@ interface VaultDao {
     @Query("DELETE FROM services")
     suspend fun deleteAllServices()
 
+    // ── Passkeys ──────────────────────────────────────────────────────────
+
+    @Query("SELECT * FROM passkeys")
+    suspend fun allPasskeys(): List<PasskeyCredential>
+
+    @Query("SELECT * FROM passkeys WHERE id = :id")
+    suspend fun passkeyById(id: Long): PasskeyCredential?
+
+    @Query("SELECT * FROM passkeys WHERE credentialId = :credentialId LIMIT 1")
+    suspend fun passkeyByCredentialId(credentialId: String): PasskeyCredential?
+
+    @Query("SELECT * FROM passkeys WHERE rpId = :rpId ORDER BY lastUsedAt DESC, username COLLATE NOCASE ASC")
+    suspend fun passkeysForRpId(rpId: String): List<PasskeyCredential>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertPasskey(passkey: PasskeyCredential): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPasskeys(passkeys: List<PasskeyCredential>)
+
+    @Query("UPDATE passkeys SET lastUsedAt = :at, signCount = signCount + 1 WHERE id = :id")
+    suspend fun markPasskeyUsed(id: Long, at: Long)
+
+    @Query("DELETE FROM passkeys")
+    suspend fun deleteAllPasskeys()
+
     // ── Entries by service ─────────────────────────────────────────────────
 
     @Query("SELECT * FROM entries WHERE serviceId IN (:serviceIds)")
@@ -128,17 +154,20 @@ interface VaultDao {
     suspend fun replaceVault(
         entries: List<VaultEntry>,
         services: List<VaultService>,
-        bindings: List<UriBinding>
+        bindings: List<UriBinding>,
+        passkeys: List<PasskeyCredential>
     ) {
         // Bindings cascade from services, but the delete order still matters:
         // entries reference services by a plain column, not a foreign key, so
         // clearing entries first means no row ever points at a service that has
         // already gone.
         deleteAll()
+        deleteAllPasskeys()
         deleteAllBindings()
         deleteAllServices()
         insertServices(services)
         insertBindings(bindings)
+        insertPasskeys(passkeys)
         upsertAll(entries)
     }
 

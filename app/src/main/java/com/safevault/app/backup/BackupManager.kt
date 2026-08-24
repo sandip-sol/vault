@@ -58,7 +58,8 @@ class BackupManager(context: Context) {
                 services = services,
                 // Bindings ride along so a restored vault autofills immediately
                 // rather than relearning every site the user has already taught it.
-                bindings = repository.allBindings()
+                bindings = repository.allBindings(),
+                passkeys = repository.allPasskeys()
             )
             appContext.contentResolver.openOutputStream(destination, "wt")
                 ?.use { it.write(bytes) }
@@ -103,7 +104,12 @@ class BackupManager(context: Context) {
             val contents = BackupPackage.open(read(source), passphrase)
                 ?: return@withContext RestoreResult.WrongPassphrase
 
-            repository.replaceVault(contents.entries, contents.services, contents.bindings)
+            repository.replaceVault(
+                contents.entries,
+                contents.services,
+                contents.bindings,
+                contents.passkeys
+            )
             // The restored vault's bindings came from the file, not from this
             // device's back-fill flag — re-arm it so a v1 backup, which carries
             // no bindings, still gets them derived from its `website` columns.

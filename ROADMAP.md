@@ -14,8 +14,8 @@ because sequencing is constrained by what is already built.
 
 SafeVault is a working local vault: master password, AES-256-GCM records, Room
 storage, biometric unlock, search, generator, auto-lock, `FLAG_SECURE`, encrypted
-backup/restore, and Android Autofill. In PRD terms, Phases 1 through 4 are now
-implemented.
+backup/restore, Android Autofill, and an Android 14+ Credential Provider. In PRD
+terms, Phases 1 through 5 are now implemented.
 
 The current state after this round of work:
 
@@ -26,7 +26,7 @@ The current state after this round of work:
 | Phase 2 — Consumer MVP UX | Grouping, multi-account, favourites, recents, generator, health, import | **Done** |
 | Phase 3 — Android autofill | `AutofillService`, save/update prompts | **Done** (device matrix still needed before release) |
 | Phase 4 — Portable backup | Encrypted export, restore, verification | **Done** (ahead of PRD order — see §2) |
-| Phase 5 — Passkeys + Credential Provider | Android 14+ provider | **Not started** |
+| Phase 5 — Passkeys + Credential Provider | Android 14+ provider | **Done** (device matrix still needed before release) |
 | Phase 6 — Optional connected backup | Network policy, remote backup | **Not started** (deliberately) |
 | Phase 7 — Sync & security intelligence | E2EE sync, breach checks | **Not started** |
 
@@ -144,6 +144,7 @@ on entries for fast list rendering and search.
 | Account | The row itself |
 | CredentialSecret | `encryptedUsername` / `encryptedPassword` / `encryptedNotes` + `payloadSchema` |
 | UriBinding | `uri_bindings` rows for web hosts and Android package names |
+| PasskeyCredential | `passkeys` row: RP ID / credential ID metadata, encrypted user handle and ES256 private key |
 | SecurityMeta | `strengthScore`, `reuseHash`, `passwordUpdatedAt` |
 | VaultMeta | `VaultPrefs` (KDF params, wrapped DEK, backup state) |
 | AuditLocal | Not built — `lastBackupAt` is the only event recorded |
@@ -172,7 +173,7 @@ The header is cleartext because restore must read the KDF parameters before it c
 ask for a passphrase, and must be able to say *"this backup holds 3 entries"* before
 the user commits. Nothing in the header is vault content.
 
-The payload holds the **DEK, every record, services and URI bindings** under one GCM
+The payload holds the **DEK, every record, services, URI bindings and passkeys** under one GCM
 tag. Carrying the DEK is what lets restore re-wrap one key for the new device rather
 than re-encrypting the vault, and the single tag means a truncated or edited file
 fails as a unit — the PRD's *"verify authentication tag before importing any
@@ -277,12 +278,41 @@ vault while locked.
 
 ---
 
-## 8. Later phases
+## 7a. Phase 5 — Credential Provider as completed
 
-**Phase 5 — Passkeys / Credential Provider (Android 14+).** `CredentialProviderService`
-alongside the autofill service. Passkey private keys are a new secret type in the DEK
-hierarchy — they encrypt like any other payload, but need their own AAD context and a
-schema bump. Depends on the Phase 3 entity split.
+Implementation exit criterion met in code: Android 14+ Credential Manager can bind
+to SafeVault as a provider, request passwords and passkeys, and save new password or
+passkey credentials through the same unlocked-session and DEK boundary as the rest of
+the vault. Release evidence still needs a device matrix with Chrome / app-backed
+Credential Manager callers.
+
+1. **Passkey storage.** [PasskeyCredential.kt](app/src/main/java/com/safevault/app/data/PasskeyCredential.kt)
+   adds `passkeys` as schema v4. RP ID and credential ID are lookup metadata;
+   user handle and ES256 private key are encrypted under passkey-specific AAD in
+   [VaultRepository.kt](app/src/main/java/com/safevault/app/data/VaultRepository.kt).
+2. **Provider service.** [SafeVaultCredentialProviderService.kt](app/src/main/java/com/safevault/app/credential/SafeVaultCredentialProviderService.kt)
+   is exported only behind `BIND_CREDENTIAL_PROVIDER_SERVICE`, declares password and
+   public-key capabilities in [credential_provider.xml](app/src/main/res/xml/credential_provider.xml),
+   and returns only an authentication action while locked.
+3. **Credential Manager handoff.** [SafeVaultCredentialAuthActivity.kt](app/src/main/java/com/safevault/app/credential/SafeVaultCredentialAuthActivity.kt)
+   reuses [UnlockActivity.kt](app/src/main/java/com/safevault/app/ui/UnlockActivity.kt)
+   before returning the populated begin response. [SafeVaultCredentialGetActivity.kt](app/src/main/java/com/safevault/app/credential/SafeVaultCredentialGetActivity.kt)
+   re-checks the session at selection time and unlocks again if the sheet outlived
+   the session.
+4. **Create flows.** [SafeVaultCredentialCreateActivity.kt](app/src/main/java/com/safevault/app/credential/SafeVaultCredentialCreateActivity.kt)
+   saves `CreatePasswordRequest` as normal credential rows and
+   `CreatePublicKeyCredentialRequest` as passkey rows, then returns Credential
+   Manager responses.
+5. **WebAuthn construction.** [WebAuthn.kt](app/src/main/java/com/safevault/app/credential/WebAuthn.kt)
+   generates P-256 keys, COSE public keys, none-format attestation objects and
+   assertion responses locally. No network permission is introduced.
+6. **Backups.** [BackupPackage.kt](app/src/main/java/com/safevault/app/backup/BackupPackage.kt)
+   bumps the backup format to v3 so passkeys ride inside the same sealed payload as
+   entries, services and bindings. v1/v2 backups still restore with no passkeys.
+
+---
+
+## 8. Later phases
 
 **Phase 6 — Optional connected backup.** The first phase that declares `INTERNET`.
 Prerequisites: `NetworkPolicy` boundary with `DENY_ALL` default; an explicit consent
@@ -298,13 +328,13 @@ device key model are mature.
 
 ## 9. Testing status
 
-123 JVM tests, all passing (`./gradlew testDebugUnitTest`):
+129 JVM tests, all passing (`./gradlew testDebugUnitTest`):
 
 | Suite | Covers |
 |---|---|
 | `CryptoManagerTest` | Round trip, IV uniqueness, wrong key, cross-field AAD rejection, tamper detection, key wrapping, schema detection |
 | `KeyDerivationTest` | Determinism, salt freshness, key length, backup work factor |
-| `BackupPackageTest` | Round trip, header readability, no plaintext in file, wrong passphrase, tamper, truncation, foreign file, unknown version, count mismatch |
+| `BackupPackageTest` | Round trip, header readability, no plaintext in file, wrong passphrase, tamper, truncation, foreign file, unknown version, count mismatch, passkey carriage |
 | `PasswordHealthTest` | Scoring, common-password and sequence detection, reuse-hash keying |
 | `PasswordGeneratorTest` | Length, class coverage and exclusion, clamping, entropy, ambiguous characters, uniqueness |
 | `PassphraseGeneratorTest` | Wordlist size/distinctness/charset, word count, separator, capitalisation, appended number, exact entropy |
@@ -312,7 +342,8 @@ device key model are mature.
 | `FieldClassifierTest` | Autofill hint precedence, browser/native password detection, new-password detection, and negative cases for search, OTP and card fields |
 | `UriNormalizerTest` | Host/package normalisation, public-suffix guardrails, phishing-lookalike rejection, exact/subdomain matching |
 | `SaveCandidateTest` | Save-path password choice, including change-password forms preferring the new password |
-| `VaultDatabaseMigrationTest` | Schema 2→3 migration, service collapse, orphan prevention, binding constraints and cascade behaviour |
+| `VaultDatabaseMigrationTest` | Schema 2→3 and 3→4 migrations, service collapse, orphan prevention, binding/passkey constraints and cascade behaviour |
+| `WebAuthnTest` | Passkey attestation JSON construction and assertion signature verification |
 
 **Gaps, in priority order:**
 
@@ -322,10 +353,13 @@ device key model are mature.
 2. **No Autofill compatibility matrix evidence.** The service needs manual or
    instrumented validation in Chrome, a WebView app and a native login form before
    release.
-3. **`LegacyVaultMigration` has no automated coverage.** Its resumability argument is
+3. **No Credential Provider compatibility matrix evidence.** Password and passkey
+   create/get flows need Android 14+ device validation against Chrome and native
+   Credential Manager callers before release.
+4. **`LegacyVaultMigration` has no automated coverage.** Its resumability argument is
    sound on paper and untested in code. Needs a test that interrupts between the two
    commits and asserts the vault still opens.
-4. **No fuzz/corruption suite** beyond the hand-written backup cases.
+5. **No fuzz/corruption suite** beyond the hand-written backup cases.
 
 ---
 

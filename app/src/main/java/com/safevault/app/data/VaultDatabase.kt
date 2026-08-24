@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [VaultEntry::class, VaultService::class, UriBinding::class],
-    version = 3,
+    entities = [VaultEntry::class, VaultService::class, UriBinding::class, PasskeyCredential::class],
+    version = 4,
     exportSchema = true
 )
 abstract class VaultDatabase : RoomDatabase() {
@@ -130,6 +130,51 @@ abstract class VaultDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 -> v4: adds passkeys as their own encrypted secret type.
+         *
+         * Passkeys hang off services for the same reason URI bindings do: one
+         * relying party can have multiple accounts, and a service already owns
+         * the user's grouping decision. The RP ID and credential ID are query
+         * metadata; the private key and user handle are sealed under the vault
+         * DEK with passkey-specific AAD in [VaultRepository].
+         */
+        @androidx.annotation.VisibleForTesting
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `passkeys` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`serviceId` INTEGER NOT NULL, " +
+                        "`rpId` TEXT NOT NULL, " +
+                        "`credentialId` TEXT NOT NULL, " +
+                        "`username` TEXT NOT NULL, " +
+                        "`displayName` TEXT NOT NULL, " +
+                        "`encryptedUserHandle` TEXT NOT NULL, " +
+                        "`encryptedPrivateKey` TEXT NOT NULL, " +
+                        "`signCount` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, " +
+                        "`lastUsedAt` INTEGER NOT NULL, " +
+                        "`payloadSchema` INTEGER NOT NULL, " +
+                        "FOREIGN KEY(`serviceId`) REFERENCES `services`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE )"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_passkeys_serviceId` " +
+                        "ON `passkeys` (`serviceId`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_passkeys_rpId` " +
+                        "ON `passkeys` (`rpId`)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_passkeys_credentialId` " +
+                        "ON `passkeys` (`credentialId`)"
+                )
+            }
+        }
+
         fun get(context: Context): VaultDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -137,7 +182,7 @@ abstract class VaultDatabase : RoomDatabase() {
                     VaultDatabase::class.java,
                     "safe_vault.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }

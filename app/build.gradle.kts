@@ -84,6 +84,9 @@ dependencies {
     // Autofill compat — inline suggestion presentations (API 30+)
     implementation("androidx.autofill:autofill:1.1.0")
 
+    // Android 14+ Credential Provider integration for passwords and passkeys.
+    implementation("androidx.credentials:credentials:1.2.2")
+
     // Crypto, backup-format and health tests run on the JVM via Robolectric,
     // which supplies the android.util.Base64 / org.json implementations.
     testImplementation("junit:junit:4.13.2")

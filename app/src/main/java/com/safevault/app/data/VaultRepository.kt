@@ -39,6 +39,23 @@ data class CredentialDetail(
     val notes: String
 )
 
+data class PasskeyDraft(
+    val id: Long = 0,
+    val serviceName: String,
+    val rpId: String,
+    val credentialId: String,
+    val username: String,
+    val displayName: String = "",
+    val userHandle: String,
+    val privateKey: String
+)
+
+data class PasskeyDetail(
+    val passkey: PasskeyCredential,
+    val userHandle: String,
+    val privateKey: String
+)
+
 /**
  * The single place where vault plaintext crosses into storage. Activities deal in
  * [CredentialDraft]/[CredentialDetail] and never call the cipher themselves, so
@@ -56,6 +73,8 @@ class VaultRepository(context: Context) {
         const val AAD_USERNAME = "entry/username/v2"
         const val AAD_PASSWORD = "entry/password/v2"
         const val AAD_NOTES = "entry/notes/v2"
+        const val AAD_PASSKEY_USER_HANDLE = "passkey/user-handle/v1"
+        const val AAD_PASSKEY_PRIVATE_KEY = "passkey/private-key/v1"
 
         /** Score for a binding that named the request exactly. */
         const val EXACT_SPECIFICITY = Int.MAX_VALUE
@@ -70,6 +89,8 @@ class VaultRepository(context: Context) {
     suspend fun bindingsFor(serviceId: Long): List<UriBinding> = dao.bindingsFor(serviceId)
 
     suspend fun allBindings(): List<UriBinding> = dao.allBindings()
+
+    suspend fun allPasskeys(): List<PasskeyCredential> = dao.allPasskeys()
 
     suspend fun count(): Int = dao.count()
 
@@ -89,6 +110,23 @@ class VaultRepository(context: Context) {
             }
         )
     }
+
+    suspend fun loadPasskey(id: Long, key: SecretKey): PasskeyDetail? {
+        val passkey = dao.passkeyById(id) ?: return null
+        return decryptPasskey(passkey, key)
+    }
+
+    suspend fun loadPasskeyByCredentialId(credentialId: String, key: SecretKey): PasskeyDetail? {
+        val passkey = dao.passkeyByCredentialId(credentialId) ?: return null
+        return decryptPasskey(passkey, key)
+    }
+
+    private fun decryptPasskey(passkey: PasskeyCredential, key: SecretKey): PasskeyDetail =
+        PasskeyDetail(
+            passkey = passkey,
+            userHandle = decryptField(passkey.encryptedUserHandle, key, AAD_PASSKEY_USER_HANDLE),
+            privateKey = decryptField(passkey.encryptedPrivateKey, key, AAD_PASSKEY_PRIVATE_KEY)
+        )
 
     suspend fun save(draft: CredentialDraft, key: SecretKey): Long {
         val now = System.currentTimeMillis()
@@ -129,6 +167,38 @@ class VaultRepository(context: Context) {
         // no reason to exist; its bindings go with it.
         if (existing != null && existing.serviceId != serviceId) dao.deleteOrphanServices()
 
+        return id
+    }
+
+    suspend fun savePasskey(draft: PasskeyDraft, key: SecretKey): Long {
+        val now = System.currentTimeMillis()
+        val existing = if (draft.id > 0) dao.passkeyById(draft.id) else null
+        val serviceName = draft.serviceName.trim().ifBlank { draft.rpId.trim() }
+        val serviceId = resolveService(serviceName)
+        val rpId = draft.rpId.trim().lowercase()
+
+        val passkey = PasskeyCredential(
+            id = draft.id,
+            serviceId = serviceId,
+            rpId = rpId,
+            credentialId = draft.credentialId.trim(),
+            username = draft.username,
+            displayName = draft.displayName,
+            encryptedUserHandle = CryptoManager.encrypt(
+                draft.userHandle, key, AAD_PASSKEY_USER_HANDLE
+            ),
+            encryptedPrivateKey = CryptoManager.encrypt(
+                draft.privateKey, key, AAD_PASSKEY_PRIVATE_KEY
+            ),
+            signCount = existing?.signCount ?: 0L,
+            createdAt = existing?.createdAt ?: now,
+            updatedAt = now,
+            lastUsedAt = existing?.lastUsedAt ?: 0L,
+            payloadSchema = CryptoManager.SCHEMA_CURRENT
+        )
+
+        val id = dao.upsertPasskey(passkey)
+        bindWebsite(serviceId, rpId, UriBinding.SOURCE_AUTOFILL)
         return id
     }
 
@@ -246,6 +316,9 @@ class VaultRepository(context: Context) {
         return collect(bindings) { EXACT_SPECIFICITY }
     }
 
+    suspend fun passkeysForRpId(rpId: String): List<PasskeyCredential> =
+        dao.passkeysForRpId(rpId.trim().lowercase())
+
     private suspend fun collect(
         bindings: List<UriBinding>,
         specificity: (UriBinding) -> Int
@@ -273,12 +346,15 @@ class VaultRepository(context: Context) {
 
     suspend fun markUsed(id: Long) = dao.markUsed(id, System.currentTimeMillis())
 
+    suspend fun markPasskeyUsed(id: Long) = dao.markPasskeyUsed(id, System.currentTimeMillis())
+
     /** Restore: the whole vault, services and bindings included. */
     suspend fun replaceVault(
         entries: List<VaultEntry>,
         services: List<VaultService>,
-        bindings: List<UriBinding>
-    ) = dao.replaceVault(entries, services, bindings)
+        bindings: List<UriBinding>,
+        passkeys: List<PasskeyCredential> = emptyList()
+    ) = dao.replaceVault(entries, services, bindings, passkeys)
 
     /**
      * Reads a field written under either payload schema. v1 rows are readable

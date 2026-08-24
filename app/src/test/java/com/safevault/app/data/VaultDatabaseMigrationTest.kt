@@ -263,4 +263,49 @@ class VaultDatabaseMigrationTest {
         assertEquals(0, db.rows("SELECT id FROM services").size)
         assertEquals(0, db.rows("SELECT id FROM uri_bindings").size)
     }
+
+    @Test
+    fun `phase five migration adds passkey table and indices`() {
+        val db = openAtV2()
+        insertV2Entry(db, "Personal", "Example")
+        VaultDatabase.MIGRATION_2_3.migrate(db)
+        VaultDatabase.MIGRATION_3_4.migrate(db)
+
+        val tables = db.rows("SELECT name FROM sqlite_master WHERE type = 'table'").map { it[0] }
+        assertTrue("actual tables: $tables", tables.contains("passkeys"))
+
+        val indices = db.rows("SELECT name FROM sqlite_master WHERE type = 'index'").map { it[0] }
+        assertTrue(
+            "missing passkey indices, actual: $indices",
+            indices.containsAll(
+                listOf(
+                    "index_passkeys_serviceId",
+                    "index_passkeys_rpId",
+                    "index_passkeys_credentialId"
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `passkeys cascade when their service is deleted`() {
+        val db = openAtV2()
+        insertV2Entry(db, "Personal", "Example")
+        VaultDatabase.MIGRATION_2_3.migrate(db)
+        VaultDatabase.MIGRATION_3_4.migrate(db)
+        db.execSQL("PRAGMA foreign_keys = ON")
+
+        val serviceId = db.rows("SELECT id FROM services").first()[0]
+        db.execSQL(
+            "INSERT INTO passkeys (serviceId, rpId, credentialId, username, displayName, " +
+                "encryptedUserHandle, encryptedPrivateKey, signCount, createdAt, updatedAt, " +
+                "lastUsedAt, payloadSchema) VALUES (?, 'example.com', 'cred-1', " +
+                "'user@example.com', 'User', 'v2.handle', 'v2.key', 0, 0, 0, 0, 2)",
+            arrayOf(serviceId)
+        )
+        assertEquals(1, db.rows("SELECT id FROM passkeys").size)
+
+        db.execSQL("DELETE FROM services WHERE id = ?", arrayOf(serviceId))
+        assertEquals(0, db.rows("SELECT id FROM passkeys").size)
+    }
 }

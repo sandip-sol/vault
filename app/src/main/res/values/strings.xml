@@ -211,4 +211,10 @@
     <string name="autofill_enable">Turn on</string>
     <string name="autofill_turn_off">Turn off</string>
     <string name="autofill_open_settings">Open settings</string>
+
+    <!-- Credential Provider -->
+    <string name="credential_provider_unlock">Unlock SafeVault</string>
+    <string name="credential_provider_save_here">Save in this offline vault</string>
+    <string name="credential_provider_failed">SafeVault could not complete that credential request.</string>
+    <string name="credential_provider_unsupported">That credential type is not supported by SafeVault.</string>
 </resources>
