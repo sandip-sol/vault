@@ -63,6 +63,9 @@ class SecurityActivity : SecureActivity() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.btnCreateBackup.setOnClickListener { promptBackupPassphrase() }
         binding.btnRestoreBackup.setOnClickListener { confirmRestore() }
+        binding.btnImportCsv.setOnClickListener {
+            startActivity(Intent(this, ImportActivity::class.java))
+        }
         binding.btnChangePassword.setOnClickListener { promptChangeMasterPassword() }
 
         setUpAutoLock()
