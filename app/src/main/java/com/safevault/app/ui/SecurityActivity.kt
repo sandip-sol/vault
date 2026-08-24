@@ -22,11 +22,13 @@ import com.safevault.app.backup.BackupPackage
 import com.safevault.app.backup.ConnectedBackupManager
 import com.safevault.app.data.VaultRepository
 import com.safevault.app.databinding.ActivitySecurityBinding
+import com.safevault.app.security.BreachCheckManager
 import com.safevault.app.security.NetworkPolicy
 import com.safevault.app.security.PasswordHealth
 import com.safevault.app.security.SessionManager
 import com.safevault.app.security.VaultKeyManager
 import com.safevault.app.security.VaultPrefs
+import com.safevault.app.sync.SyncManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,6 +47,8 @@ class SecurityActivity : SecureActivity() {
     private lateinit var prefs: VaultPrefs
     private lateinit var backups: BackupManager
     private lateinit var connectedBackups: ConnectedBackupManager
+    private lateinit var sync: SyncManager
+    private lateinit var breachChecks: BreachCheckManager
 
     /** Held between the passphrase prompt and the file picker returning. */
     private var pendingBackupPassphrase: CharArray? = null
@@ -68,12 +72,19 @@ class SecurityActivity : SecureActivity() {
         prefs = VaultPrefs(this)
         backups = BackupManager(this)
         connectedBackups = ConnectedBackupManager(this)
+        sync = SyncManager(this)
+        breachChecks = BreachCheckManager(this)
 
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.btnCreateBackup.setOnClickListener { promptBackupPassphrase() }
         binding.btnRestoreBackup.setOnClickListener { confirmRestore() }
         binding.btnConfigureConnectedBackup.setOnClickListener { toggleConnectedBackup() }
         binding.btnUploadConnectedBackup.setOnClickListener { promptConnectedBackupPassphrase() }
+        binding.btnConfigureSync.setOnClickListener { toggleSync() }
+        binding.btnUploadSync.setOnClickListener { uploadSync() }
+        binding.btnDownloadSync.setOnClickListener { confirmSyncDownload() }
+        binding.btnConfigureBreachCheck.setOnClickListener { toggleBreachChecks() }
+        binding.btnRunBreachCheck.setOnClickListener { runBreachCheck() }
         binding.btnImportCsv.setOnClickListener {
             startActivity(Intent(this, ImportActivity::class.java))
         }
@@ -89,6 +100,7 @@ class SecurityActivity : SecureActivity() {
         refreshHealth()
         refreshBackupStatus()
         refreshConnectedBackupStatus()
+        refreshPhase7Status()
         refreshPrivacyStatus()
         // Autofill is enabled in system settings, not here, so the state has to
         // be re-read every time this screen comes back rather than cached.
@@ -208,14 +220,21 @@ class SecurityActivity : SecureActivity() {
     }
 
     private fun refreshPrivacyStatus() {
-        val enabled = connectedBackupEnabled()
+        val mode = prefs.networkPolicyMode
         binding.tvNetworkStatus.setText(
-            if (enabled) R.string.network_status_connected else R.string.network_status_locked
+            when (mode) {
+                NetworkPolicy.Mode.CONNECTED_BACKUP_ONLY -> R.string.network_status_connected
+                NetworkPolicy.Mode.SYNC_AND_SECURITY_INTELLIGENCE -> R.string.network_status_phase7
+                NetworkPolicy.Mode.DENY_ALL -> R.string.network_status_locked
+            }
         )
-        binding.tvPrivacyDetail.text = if (enabled) {
-            getString(R.string.privacy_detail_connected, prefs.connectedBackupEndpoint)
-        } else {
-            getString(R.string.privacy_detail_locked)
+        binding.tvPrivacyDetail.text = when (mode) {
+            NetworkPolicy.Mode.CONNECTED_BACKUP_ONLY ->
+                getString(R.string.privacy_detail_connected, prefs.connectedBackupEndpoint)
+            NetworkPolicy.Mode.SYNC_AND_SECURITY_INTELLIGENCE ->
+                getString(R.string.privacy_detail_phase7)
+            NetworkPolicy.Mode.DENY_ALL ->
+                getString(R.string.privacy_detail_locked)
         }
     }
 
@@ -376,6 +395,208 @@ class SecurityActivity : SecureActivity() {
                 }
             } finally {
                 passphrase.fill(' ')
+            }
+        }
+    }
+
+    // -- Sync and breach checks --------------------------------------------
+
+    private fun refreshPhase7Status() {
+        val settings = prefs.networkPolicySettings()
+        val syncEnabled = NetworkPolicy(settings).evaluate(NetworkPolicy.Capability.SYNC_UPLOAD).allowed
+        val breachEnabled = NetworkPolicy(settings)
+            .evaluate(NetworkPolicy.Capability.BREACH_RANGE_LOOKUP)
+            .allowed
+
+        binding.btnConfigureSync.setText(
+            if (syncEnabled) R.string.sync_turn_off else R.string.sync_configure
+        )
+        binding.btnUploadSync.isEnabled = syncEnabled
+        binding.btnDownloadSync.isEnabled = syncEnabled
+        binding.tvSyncStatus.text = if (!syncEnabled) {
+            getString(R.string.sync_off)
+        } else {
+            val last = prefs.lastSyncAt
+            if (last == 0L) {
+                getString(R.string.sync_ready, prefs.syncEndpoint)
+            } else {
+                val formatter = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                getString(R.string.sync_last, formatter.format(Date(last)), prefs.syncEndpoint)
+            }
+        }
+
+        binding.btnConfigureBreachCheck.setText(
+            if (breachEnabled) R.string.breach_check_turn_off else R.string.breach_check_configure
+        )
+        binding.btnRunBreachCheck.isEnabled = breachEnabled
+        binding.tvBreachStatus.text = if (!breachEnabled) {
+            getString(R.string.breach_check_off)
+        } else {
+            val last = prefs.lastBreachCheckAt
+            if (last == 0L) {
+                getString(R.string.breach_check_ready)
+            } else {
+                val formatter = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                getString(R.string.breach_check_last, formatter.format(Date(last)))
+            }
+        }
+    }
+
+    private fun toggleSync() {
+        val enabled = NetworkPolicy(prefs.networkPolicySettings())
+            .evaluate(NetworkPolicy.Capability.SYNC_UPLOAD)
+            .allowed
+        if (enabled) {
+            prefs.disableSync()
+            refreshPhase7Status()
+            refreshPrivacyStatus()
+            toast(getString(R.string.sync_disabled))
+        } else {
+            showSyncConsent()
+        }
+    }
+
+    private fun showSyncConsent() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.sync_consent_title)
+            .setMessage(R.string.sync_consent_body)
+            .setPositiveButton(R.string.connected_backup_consent_accept) { _, _ ->
+                promptSyncEndpoint()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun promptSyncEndpoint() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+            hint = getString(R.string.sync_endpoint_hint)
+            setText(prefs.syncEndpoint)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.sync_endpoint_title)
+            .setMessage(R.string.sync_endpoint_note)
+            .setView(input)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val endpoint = input.text?.toString().orEmpty()
+                if (NetworkPolicy.isHttpsEndpoint(endpoint)) {
+                    prefs.enableSync(endpoint)
+                    toast(getString(R.string.sync_enabled))
+                    refreshPhase7Status()
+                    refreshPrivacyStatus()
+                } else {
+                    toast(getString(R.string.sync_endpoint_invalid))
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun uploadSync() {
+        val dek = SessionManager.key
+        if (dek == null) {
+            toast(getString(R.string.sync_locked))
+            return
+        }
+
+        lifecycleScope.launch {
+            when (val result = sync.uploadNow(dek)) {
+                is SyncManager.SyncResult.Uploaded -> {
+                    toast(getString(R.string.sync_uploaded, result.revision, result.statusCode))
+                    refreshPhase7Status()
+                    refreshPrivacyStatus()
+                }
+                is SyncManager.SyncResult.Blocked -> toast(getString(R.string.sync_blocked, result.reason))
+                is SyncManager.SyncResult.Failed -> toast(getString(R.string.sync_failed, result.reason))
+                is SyncManager.SyncResult.Conflict -> toast(getString(R.string.sync_conflict, result.reason))
+                is SyncManager.SyncResult.AppliedRemote -> {
+                    toast(getString(R.string.sync_applied, result.entries))
+                    refreshPhase7Status()
+                    refreshHealth()
+                }
+                SyncManager.SyncResult.AlreadyCurrent -> toast(getString(R.string.sync_current))
+            }
+        }
+    }
+
+    private fun confirmSyncDownload() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.sync_download)
+            .setMessage(R.string.sync_download_warning)
+            .setPositiveButton(R.string.sync_download) { _, _ -> downloadSync() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun downloadSync() {
+        val dek = SessionManager.key
+        if (dek == null) {
+            toast(getString(R.string.sync_locked))
+            return
+        }
+
+        lifecycleScope.launch {
+            when (val result = sync.downloadAndApply(dek)) {
+                is SyncManager.SyncResult.AppliedRemote -> {
+                    toast(getString(R.string.sync_applied, result.entries))
+                    refreshPhase7Status()
+                    refreshHealth()
+                }
+                SyncManager.SyncResult.AlreadyCurrent -> toast(getString(R.string.sync_current))
+                is SyncManager.SyncResult.Conflict -> toast(getString(R.string.sync_conflict, result.reason))
+                is SyncManager.SyncResult.Blocked -> toast(getString(R.string.sync_blocked, result.reason))
+                is SyncManager.SyncResult.Failed -> toast(getString(R.string.sync_failed, result.reason))
+                is SyncManager.SyncResult.Uploaded -> {
+                    toast(getString(R.string.sync_uploaded, result.revision, result.statusCode))
+                    refreshPhase7Status()
+                }
+            }
+        }
+    }
+
+    private fun toggleBreachChecks() {
+        val enabled = NetworkPolicy(prefs.networkPolicySettings())
+            .evaluate(NetworkPolicy.Capability.BREACH_RANGE_LOOKUP)
+            .allowed
+        if (enabled) {
+            prefs.disableBreachChecks()
+            refreshPhase7Status()
+            refreshPrivacyStatus()
+            toast(getString(R.string.breach_check_disabled))
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.breach_check_consent_title)
+                .setMessage(R.string.breach_check_consent_body)
+                .setPositiveButton(R.string.connected_backup_consent_accept) { _, _ ->
+                    prefs.enableBreachChecks()
+                    toast(getString(R.string.breach_check_enabled))
+                    refreshPhase7Status()
+                    refreshPrivacyStatus()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+    }
+
+    private fun runBreachCheck() {
+        val dek = SessionManager.key
+        if (dek == null) {
+            toast(getString(R.string.breach_check_locked))
+            return
+        }
+
+        lifecycleScope.launch {
+            when (val result = breachChecks.checkVault(dek)) {
+                is BreachCheckManager.Result.Success -> {
+                    toast(getString(R.string.breach_check_done, result.checked, result.breached))
+                    refreshPhase7Status()
+                }
+                is BreachCheckManager.Result.Blocked ->
+                    toast(getString(R.string.breach_check_blocked, result.reason))
+                is BreachCheckManager.Result.Failed ->
+                    toast(getString(R.string.breach_check_failed, result.reason))
             }
         }
     }

@@ -2,8 +2,8 @@
 
 A password manager that works with no account and starts in Network Lock. Credentials
 are encrypted with **AES-256-GCM** under a random vault key that is itself wrapped by
-your master password. Optional connected backup can upload the same sealed backup
-package to an HTTPS endpoint only after explicit consent.
+your master password. Optional connected backup, encrypted sync and breach checks
+use HTTPS endpoints only after explicit consent.
 
 See [ROADMAP.md](ROADMAP.md) for architecture rationale, phase plan and open gaps.
 
@@ -21,6 +21,8 @@ See [ROADMAP.md](ROADMAP.md) for architecture rationale, phase plan and open gap
 | 🩺 Password health | Weak and reused passwords flagged locally — reuse is detected via a vault-keyed HMAC, never a stored hash of your password |
 | 💾 Encrypted backup | One passphrase-protected file, verified by re-reading it after every export |
 | ☁️ Optional connected backup | Deny-by-default network policy; uploads only backup packages to a user-chosen HTTPS endpoint |
+| 🔁 Encrypted sync | Full-vault snapshots sealed under a DEK-derived sync key, with explicit device/revision conflict handling |
+| 🧪 Breach checks | Opt-in k-anonymity range lookups; plaintext passwords and full hashes never leave the device |
 | ♻️ Restore | Recovers the vault key and re-wraps it for the new device; records are never re-encrypted |
 | 🔍 Search | Filters on non-secret metadata only — no decryption per keystroke |
 | 🎲 Generator | Passwords (length and character classes) and passphrases (1024-word list, exactly 10 bits per word), with live entropy and session-only history |
@@ -68,7 +70,9 @@ app/src/main/java/com/safevault/app/
 ├── importer/            CsvImport (parsing + column detection)
 ├── security/            CryptoManager, KeyDerivation, VaultKeyManager,
 │                        BiometricKeyGuard, VaultPrefs, SessionManager,
-│                        PasswordHealth, NetworkPolicy, LegacyVaultMigration
+│                        PasswordHealth, BreachCheck, NetworkPolicy,
+│                        LegacyVaultMigration
+├── sync/                SyncPackage, SyncCoordinator, SyncManager
 └── ui/                  Unlock / Vault / EntryEdit / Security / Restore /
                          Generator / Import activities, VaultListAdapter,
                          SecureClipboard, PasswordGenerator, PassphraseGenerator
@@ -80,7 +84,7 @@ Android Studio (Koala or newer), or from the command line:
 
 ```bash
 ./gradlew assembleDebug        # APK at app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest    # 136 JVM tests
+./gradlew testDebugUnitTest    # 153 JVM tests
 ```
 
 AGP 8.5.2, Kotlin 1.9.24, min SDK 26 / target SDK 34. Biometric unlock needs a
@@ -108,8 +112,8 @@ cp app/build/outputs/apk/debug/app-debug.apk /mnt/c/temp/safevault.apk
 4. The **key icon** opens the Generator: passwords or passphrases, with a live
    entropy read-out. Nothing generated there is saved.
 5. The **shield icon** opens Security: password health, encrypted backup and
-   restore, optional connected backup, CSV import, biometric unlock, auto-lock
-   timing and master password change.
+   restore, optional connected backup, encrypted sync, breach checks, CSV import,
+   biometric unlock, auto-lock timing and master password change.
 6. In Security, turn on **Autofill service** through Android's system prompt to
    offer saved logins in apps and browsers.
 
@@ -133,4 +137,5 @@ leaves the vault openable and the migration resumable.
 
 Tracked in [ROADMAP.md](ROADMAP.md) §9. In short: no instrumentation tests, the
 legacy migration is verified by hand rather than automatically, and the Autofill
-compatibility matrix still needs device/emulator evidence.
+Credential Provider and Phase 7 compatibility matrices still need device/server
+evidence.

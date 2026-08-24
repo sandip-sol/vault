@@ -188,6 +188,95 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ── Sync and breach checks ── -->
+            <TextView style="@style/TextAppearance.SafeVault.SectionHeader"
+                android:text="@string/section_sync_security" />
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.SafeVault.Card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="@dimen/spacing_md">
+
+                    <TextView
+                        android:id="@+id/tvSyncStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingMultiplier="1.3"
+                        android:textColor="@color/on_surface"
+                        android:textSize="15sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnConfigureSync"
+                        style="@style/Widget.SafeVault.Button.Tonal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_md"
+                        android:text="@string/sync_configure"
+                        app:icon="@drawable/ic_backup"
+                        app:iconGravity="textStart" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnUploadSync"
+                        style="@style/Widget.SafeVault.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:text="@string/sync_upload"
+                        app:icon="@drawable/ic_backup"
+                        app:iconGravity="textStart" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDownloadSync"
+                        style="@style/Widget.SafeVault.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:text="@string/sync_download"
+                        app:icon="@drawable/ic_restore"
+                        app:iconGravity="textStart" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="@dimen/spacing_md"
+                        android:background="@color/divider" />
+
+                    <TextView
+                        android:id="@+id/tvBreachStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingMultiplier="1.3"
+                        android:textColor="@color/on_surface"
+                        android:textSize="15sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnConfigureBreachCheck"
+                        style="@style/Widget.SafeVault.Button.Tonal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_md"
+                        android:text="@string/breach_check_configure"
+                        app:icon="@drawable/ic_shield"
+                        app:iconGravity="textStart" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnRunBreachCheck"
+                        style="@style/Widget.SafeVault.Button.Outlined"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:text="@string/breach_check_run"
+                        app:icon="@drawable/ic_search"
+                        app:iconGravity="textStart" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- ── Unlock ── -->
             <TextView style="@style/TextAppearance.SafeVault.SectionHeader"
                 android:text="@string/section_unlock" />

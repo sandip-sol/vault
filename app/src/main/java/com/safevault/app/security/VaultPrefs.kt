@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.util.UUID
 
 /**
  * Vault metadata: KDF parameters, the wrapped data-encryption key, and local
@@ -43,6 +44,14 @@ class VaultPrefs(context: Context) {
         private const val KEY_NETWORK_POLICY_MODE = "network_policy_mode"
         private const val KEY_CONNECTED_BACKUP_ENDPOINT = "connected_backup_endpoint"
         private const val KEY_CONNECTED_BACKUP_CONSENT_AT = "connected_backup_consent_at"
+        private const val KEY_SYNC_DEVICE_ID = "sync_device_id"
+        private const val KEY_SYNC_ENDPOINT = "sync_endpoint"
+        private const val KEY_SYNC_CONSENT_AT = "sync_consent_at"
+        private const val KEY_SYNC_LAST_REVISION = "sync_last_revision"
+        private const val KEY_SYNC_LAST_AT = "sync_last_at"
+        private const val KEY_BREACH_CHECK_ENDPOINT = "breach_check_endpoint"
+        private const val KEY_BREACH_CHECK_CONSENT_AT = "breach_check_consent_at"
+        private const val KEY_LAST_BREACH_CHECK_AT = "last_breach_check_at"
 
         // Pre-envelope (schema v1) keys, read only during migration
         private const val KEY_LEGACY_SALT = "salt"
@@ -188,9 +197,46 @@ class VaultPrefs(context: Context) {
     val connectedBackupConsentAt: Long
         get() = prefs.getLong(KEY_CONNECTED_BACKUP_CONSENT_AT, 0L)
 
+    val syncDeviceId: String
+        get() {
+            prefs.getString(KEY_SYNC_DEVICE_ID, null)?.let { return it }
+            val generated = UUID.randomUUID().toString()
+            prefs.edit().putString(KEY_SYNC_DEVICE_ID, generated).commit()
+            return generated
+        }
+
+    var syncEndpoint: String
+        get() = prefs.getString(KEY_SYNC_ENDPOINT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_SYNC_ENDPOINT, value.trim()).apply()
+
+    val syncConsentAt: Long
+        get() = prefs.getLong(KEY_SYNC_CONSENT_AT, 0L)
+
+    var syncLastRevision: Long
+        get() = prefs.getLong(KEY_SYNC_LAST_REVISION, 0L)
+        set(value) = prefs.edit().putLong(KEY_SYNC_LAST_REVISION, value).apply()
+
+    var lastSyncAt: Long
+        get() = prefs.getLong(KEY_SYNC_LAST_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_SYNC_LAST_AT, value).apply()
+
+    var breachCheckEndpoint: String
+        get() = prefs.getString(
+            KEY_BREACH_CHECK_ENDPOINT,
+            NetworkPolicy.DEFAULT_BREACH_RANGE_ENDPOINT
+        ) ?: NetworkPolicy.DEFAULT_BREACH_RANGE_ENDPOINT
+        set(value) = prefs.edit().putString(KEY_BREACH_CHECK_ENDPOINT, value.trim()).apply()
+
+    val breachCheckConsentAt: Long
+        get() = prefs.getLong(KEY_BREACH_CHECK_CONSENT_AT, 0L)
+
+    var lastBreachCheckAt: Long
+        get() = prefs.getLong(KEY_LAST_BREACH_CHECK_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_BREACH_CHECK_AT, value).apply()
+
     fun enableConnectedBackup(endpoint: String, consentAt: Long = System.currentTimeMillis()) {
         prefs.edit()
-            .putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.CONNECTED_BACKUP_ONLY.name)
+            .putString(KEY_NETWORK_POLICY_MODE, networkModeAfterEnableConnectedBackup().name)
             .putString(KEY_CONNECTED_BACKUP_ENDPOINT, endpoint.trim())
             .putLong(KEY_CONNECTED_BACKUP_CONSENT_AT, consentAt)
             .apply()
@@ -198,16 +244,67 @@ class VaultPrefs(context: Context) {
 
     fun disableConnectedBackup() {
         prefs.edit()
-            .putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.DENY_ALL.name)
+            .putString(KEY_NETWORK_POLICY_MODE, networkModeAfterDisableConnectedBackup().name)
             .remove(KEY_CONNECTED_BACKUP_ENDPOINT)
             .remove(KEY_CONNECTED_BACKUP_CONSENT_AT)
+            .apply()
+    }
+
+    fun enableSync(endpoint: String, consentAt: Long = System.currentTimeMillis()) {
+        prefs.edit()
+            .putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.SYNC_AND_SECURITY_INTELLIGENCE.name)
+            .putString(KEY_SYNC_ENDPOINT, endpoint.trim())
+            .putLong(KEY_SYNC_CONSENT_AT, consentAt)
+            .apply()
+    }
+
+    fun enableBreachChecks(
+        endpoint: String = NetworkPolicy.DEFAULT_BREACH_RANGE_ENDPOINT,
+        consentAt: Long = System.currentTimeMillis()
+    ) {
+        prefs.edit()
+            .putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.SYNC_AND_SECURITY_INTELLIGENCE.name)
+            .putString(KEY_BREACH_CHECK_ENDPOINT, endpoint.trim())
+            .putLong(KEY_BREACH_CHECK_CONSENT_AT, consentAt)
+            .apply()
+    }
+
+    fun disableSync() {
+        prefs.edit().apply {
+            remove(KEY_SYNC_ENDPOINT)
+            remove(KEY_SYNC_CONSENT_AT)
+            if (breachCheckConsentAt <= 0L) {
+                putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.DENY_ALL.name)
+            }
+        }.apply()
+    }
+
+    fun disableBreachChecks() {
+        prefs.edit().apply {
+            remove(KEY_BREACH_CHECK_CONSENT_AT)
+            if (syncConsentAt <= 0L) {
+                putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.DENY_ALL.name)
+            }
+        }.apply()
+    }
+
+    fun disablePhase7Network() {
+        prefs.edit()
+            .putString(KEY_NETWORK_POLICY_MODE, NetworkPolicy.Mode.DENY_ALL.name)
+            .remove(KEY_SYNC_ENDPOINT)
+            .remove(KEY_SYNC_CONSENT_AT)
+            .remove(KEY_BREACH_CHECK_CONSENT_AT)
             .apply()
     }
 
     fun networkPolicySettings() = NetworkPolicy.Settings(
         mode = networkPolicyMode,
         connectedBackupConsentAt = connectedBackupConsentAt,
-        connectedBackupEndpoint = connectedBackupEndpoint
+        connectedBackupEndpoint = connectedBackupEndpoint,
+        syncConsentAt = syncConsentAt,
+        syncEndpoint = syncEndpoint,
+        breachCheckConsentAt = breachCheckConsentAt,
+        breachCheckEndpoint = breachCheckEndpoint
     )
 
     // ── Helpers ────────────────────────────────────────────────────────────
@@ -216,4 +313,18 @@ class VaultPrefs(context: Context) {
 
     private fun decode(key: String): ByteArray? =
         prefs.getString(key, null)?.let { Base64.decode(it, Base64.NO_WRAP) }
+
+    private fun networkModeAfterEnableConnectedBackup(): NetworkPolicy.Mode =
+        if (syncConsentAt > 0L || breachCheckConsentAt > 0L) {
+            NetworkPolicy.Mode.SYNC_AND_SECURITY_INTELLIGENCE
+        } else {
+            NetworkPolicy.Mode.CONNECTED_BACKUP_ONLY
+        }
+
+    private fun networkModeAfterDisableConnectedBackup(): NetworkPolicy.Mode =
+        if (syncConsentAt > 0L || breachCheckConsentAt > 0L) {
+            NetworkPolicy.Mode.SYNC_AND_SECURITY_INTELLIGENCE
+        } else {
+            NetworkPolicy.Mode.DENY_ALL
+        }
 }

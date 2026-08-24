@@ -15,8 +15,8 @@ because sequencing is constrained by what is already built.
 SafeVault is a working local vault: master password, AES-256-GCM records, Room
 storage, biometric unlock, search, generator, auto-lock, `FLAG_SECURE`, encrypted
 backup/restore, Android Autofill, an Android 14+ Credential Provider, and optional
-connected backup behind a deny-by-default network policy. In PRD terms, Phases 1
-through 6 are now implemented.
+connected backup, encrypted sync and opt-in breach checks behind a deny-by-default
+network policy. In PRD terms, Phases 1 through 7 are now implemented.
 
 The current state after this round of work:
 
@@ -29,7 +29,7 @@ The current state after this round of work:
 | Phase 4 — Portable backup | Encrypted export, restore, verification | **Done** (ahead of PRD order — see §2) |
 | Phase 5 — Passkeys + Credential Provider | Android 14+ provider | **Done** (device matrix still needed before release) |
 | Phase 6 — Optional connected backup | Network policy, remote backup | **Done** |
-| Phase 7 — Sync & security intelligence | E2EE sync, breach checks | **Not started** |
+| Phase 7 — Sync & security intelligence | E2EE sync, breach checks | **Done** (device/server matrix and review still needed before release) |
 
 ---
 
@@ -122,7 +122,7 @@ migrate; it is never written.
 | Clipboard snooping | Sensitive flag + timed clear. **Partial** — a keyboard reading a live clipboard still wins. Autofill (Phase 3) is the real fix |
 | New fingerprint enrolled by an attacker | `setInvalidatedByBiometricEnrollment(true)` destroys the key; vault falls back to password |
 | Backup file stolen | Single GCM tag over DEK + all records, keyed by a 310k-iteration PBKDF2 of a separate passphrase |
-| Network exfiltration | `INTERNET` exists for Phase 6, but `NetworkPolicy` defaults to `DENY_ALL`; the only allowed capability is a user-consented HTTPS connected-backup upload |
+| Network exfiltration | `INTERNET` exists for Phase 6+, but `NetworkPolicy` defaults to `DENY_ALL`; the only allowed capabilities are user-consented HTTPS connected-backup upload, encrypted sync and breach range lookup |
 | Rooted device | Not defended. Documented, not promised against |
 
 ---
@@ -336,17 +336,39 @@ settings are `DENY_ALL`; connected backup is the only named network capability.
    requirements. `ConnectedBackupCoordinatorTest` asserts the uploader is not
    called while Network Lock is on.
 
-## 8a. Later phases
+## 8a. Phase 7 — Sync and security intelligence as completed
 
-**Phase 7 — Sync.** Not startable until device identity and conflict resolution are
-designed. The PRD is right that this must not be attempted before backup and the
-device key model are mature.
+Phase 7 is implemented as a conservative full-snapshot sync rather than record-level
+merge. That is deliberate: the app did not have tombstones, per-record authorship or
+a conflict UI, and silently inventing those in the background would be worse than a
+clear conflict. The server sees routing metadata only — format, device id and
+revision — while vault contents sit inside an AEAD payload under a sync key derived
+from the vault DEK.
+
+1. **Device identity and sync envelope.** [VaultPrefs.kt](app/src/main/java/com/safevault/app/security/VaultPrefs.kt)
+   owns a stable random `syncDeviceId`, sync consent and revision metadata.
+   [SyncPackage.kt](app/src/main/java/com/safevault/app/sync/SyncPackage.kt)
+   seals entries, services, URI bindings and passkeys as one encrypted snapshot.
+2. **Conflict boundary.** [SyncCoordinator.kt](app/src/main/java/com/safevault/app/sync/SyncCoordinator.kt)
+   includes `SyncConflictResolver`: matching revisions apply cleanly, older remote
+   snapshots are ignored, local-only newer snapshots upload, and divergent local
+   plus remote changes return a conflict instead of overwriting either side.
+3. **Transport policy.** Sync upload/download are named `NetworkPolicy`
+   capabilities, require Phase 7 mode, recorded consent and an HTTPS endpoint, and
+   are tested so no transport callback runs during Network Lock.
+4. **Breach checks.** [BreachCheck.kt](app/src/main/java/com/safevault/app/security/BreachCheck.kt)
+   computes SHA-1 locally, sends only the first five hex characters to a
+   k-anonymity range endpoint, and matches suffixes on-device. Plaintext passwords
+   and full hashes are never sent.
+5. **Security UI.** [SecurityActivity.kt](app/src/main/java/com/safevault/app/ui/SecurityActivity.kt)
+   now exposes encrypted sync setup/upload/download and separate breach-check
+   consent/run controls in the Security screen.
 
 ---
 
 ## 9. Testing status
 
-136 JVM tests, all passing (`./gradlew testDebugUnitTest`):
+153 JVM tests, all passing (`./gradlew testDebugUnitTest`):
 
 | Suite | Covers |
 |---|---|
@@ -363,6 +385,8 @@ device key model are mature.
 | `VaultDatabaseMigrationTest` | Schema 2→3 and 3→4 migrations, service collapse, orphan prevention, binding/passkey constraints and cascade behaviour |
 | `WebAuthnTest` | Passkey attestation JSON construction and assertion signature verification |
 | `NetworkPolicyTest` / `ConnectedBackupCoordinatorTest` | Deny-by-default network policy, consent/HTTPS gates and no uploader call during Network Lock |
+| `SyncPackageTest` / `SyncCoordinatorTest` | E2EE sync snapshot privacy, DEK-keyed opening, sync consent gates and conflict decisions |
+| `BreachCheckTest` | SHA-1 prefix/suffix split, range-response matching and no client call during Network Lock |
 
 **Gaps, in priority order:**
 
@@ -375,10 +399,13 @@ device key model are mature.
 3. **No Credential Provider compatibility matrix evidence.** Password and passkey
    create/get flows need Android 14+ device validation against Chrome and native
    Credential Manager callers before release.
-4. **`LegacyVaultMigration` has no automated coverage.** Its resumability argument is
+4. **No Phase 7 server/device matrix evidence.** Sync needs validation against the
+   chosen endpoint contract, multi-device revision races, offline retries and
+   breach-range failures before release.
+5. **`LegacyVaultMigration` has no automated coverage.** Its resumability argument is
    sound on paper and untested in code. Needs a test that interrupts between the two
    commits and asserts the vault still opens.
-5. **No fuzz/corruption suite** beyond the hand-written backup cases.
+6. **No fuzz/corruption suite** beyond the hand-written backup/sync cases.
 
 ---
 
@@ -387,12 +414,12 @@ device key model are mature.
 | Blocker | Status |
 |---|---|
 | Plaintext credential in logs, crash reports, backups or temp files | **Clear** — backup file verified free of entry plaintext; nothing logs secrets |
-| Network request during Network Lock | **Tested in code** — `NetworkPolicy` defaults to `DENY_ALL`, and the connected-backup coordinator does not call its uploader while blocked |
+| Network request during Network Lock | **Tested in code** — `NetworkPolicy` defaults to `DENY_ALL`, and connected-backup, sync and breach-check coordinators do not call their transports while blocked |
 | Backup that cannot be restored on a clean device | **Verified** — full uninstall/restore drill passes |
 | Autofill path exposing a locked credential | **Designed against in code** — locked fill responses do not query the vault; device matrix still pending |
 | Migration that can silently drop or corrupt records | **Partly proven** — schema 2→3 is JVM-tested; legacy content migration still lacks automated interruption coverage |
-| Cloud feature where server compromise reveals plaintext | **Designed against** — connected backup uploads the existing sealed backup package; the endpoint gets no key or passphrase |
+| Cloud feature where server compromise reveals plaintext | **Designed against** — connected backup uploads the existing sealed backup package, sync uploads a DEK-derived sealed snapshot, and breach checks send only range prefixes |
 
-Independent security review remains a release requirement for the connected-backup
-boundary and any future sync feature, per the PRD's closing note. Nothing in this
-round substitutes for it.
+Independent security review remains a release requirement for the connected-backup,
+sync and breach-check boundaries, per the PRD's closing note. Nothing in this round
+substitutes for it.

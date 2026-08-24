@@ -96,6 +96,13 @@ class VaultRepository(context: Context) {
 
     suspend fun getAll(): List<VaultEntry> = dao.getAll()
 
+    suspend fun localRevision(): Long = maxOf(
+        dao.maxEntryUpdatedAt(),
+        dao.maxServiceUpdatedAt(),
+        dao.maxBindingCreatedAt(),
+        dao.maxPasskeyUpdatedAt()
+    )
+
     suspend fun load(id: Long, key: SecretKey): CredentialDetail? {
         val entry = dao.getById(id) ?: return null
         return CredentialDetail(

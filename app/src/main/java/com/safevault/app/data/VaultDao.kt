@@ -27,6 +27,9 @@ interface VaultDao {
     @Query("SELECT COUNT(*) FROM entries")
     suspend fun count(): Int
 
+    @Query("SELECT COALESCE(MAX(updatedAt), 0) FROM entries")
+    suspend fun maxEntryUpdatedAt(): Long
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: VaultEntry): Long
 
@@ -53,6 +56,9 @@ interface VaultDao {
     @Query("SELECT * FROM services WHERE id = :id")
     suspend fun serviceById(id: Long): VaultService?
 
+    @Query("SELECT COALESCE(MAX(updatedAt), 0) FROM services")
+    suspend fun maxServiceUpdatedAt(): Long
+
     /** NOCASE on the column makes this the same lookup the unique index enforces. */
     @Query("SELECT * FROM services WHERE name = :name LIMIT 1")
     suspend fun serviceByName(name: String): VaultService?
@@ -73,6 +79,9 @@ interface VaultDao {
 
     @Query("SELECT * FROM uri_bindings")
     suspend fun allBindings(): List<UriBinding>
+
+    @Query("SELECT COALESCE(MAX(createdAt), 0) FROM uri_bindings")
+    suspend fun maxBindingCreatedAt(): Long
 
     /**
      * The autofill lookup. The caller expands a request host into the exact set
@@ -108,6 +117,9 @@ interface VaultDao {
 
     @Query("SELECT * FROM passkeys WHERE rpId = :rpId ORDER BY lastUsedAt DESC, username COLLATE NOCASE ASC")
     suspend fun passkeysForRpId(rpId: String): List<PasskeyCredential>
+
+    @Query("SELECT COALESCE(MAX(updatedAt), 0) FROM passkeys")
+    suspend fun maxPasskeyUpdatedAt(): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPasskey(passkey: PasskeyCredential): Long

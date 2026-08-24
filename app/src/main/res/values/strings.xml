@@ -139,6 +139,7 @@
     <string name="section_health">Password health</string>
     <string name="section_backup">Backup</string>
     <string name="section_connected_backup">Connected backup</string>
+    <string name="section_sync_security">Sync &amp; breach checks</string>
     <string name="section_unlock">Unlock</string>
     <string name="section_privacy">Privacy</string>
 
@@ -162,7 +163,7 @@
     <string name="backup_unverified">The file was written but could not be re-opened, so it has not been recorded as a backup. Try a different location.</string>
     <string name="backup_failed">Backup failed: %1$s</string>
 
-    <string name="connected_backup_off">Network Lock is on. Connected backup will not make any request until you explicitly enable it for one HTTPS endpoint.</string>
+    <string name="connected_backup_off">Connected backup is off. It will not make any request until you explicitly enable it for one HTTPS endpoint.</string>
     <string name="connected_backup_ready">Ready to upload encrypted backups to %1$s.</string>
     <string name="connected_backup_last">Last connected backup: %1$s to %2$s.</string>
     <string name="connected_backup_configure">Set up connected backup</string>
@@ -182,6 +183,45 @@
     <string name="connected_backup_done">Uploaded and verified %1$d entries (HTTP %2$d).</string>
     <string name="connected_backup_blocked">Network request blocked: %1$s</string>
     <string name="connected_backup_failed">Connected backup failed: %1$s</string>
+
+    <string name="sync_off">Encrypted sync is off. No sync request is made until you enable it for one HTTPS endpoint.</string>
+    <string name="sync_ready">Encrypted sync ready for %1$s.</string>
+    <string name="sync_last">Last synced: %1$s with %2$s.</string>
+    <string name="sync_configure">Set up encrypted sync</string>
+    <string name="sync_turn_off">Turn off sync</string>
+    <string name="sync_upload">Upload sync snapshot</string>
+    <string name="sync_download">Download latest snapshot</string>
+    <string name="sync_consent_title">Enable encrypted sync?</string>
+    <string name="sync_consent_body">SafeVault will upload and download one encrypted full-vault snapshot through an HTTPS endpoint you choose. The server sees the sync format, device id and revision; vault contents stay inside an AEAD payload derived from your vault key.</string>
+    <string name="sync_endpoint_title">Sync endpoint</string>
+    <string name="sync_endpoint_hint">https://example.com/safevault-sync</string>
+    <string name="sync_endpoint_note">Use an HTTPS endpoint you control or trust. SafeVault uses PUT to upload the encrypted snapshot and GET to fetch the latest one.</string>
+    <string name="sync_endpoint_invalid">Enter a valid HTTPS endpoint with no embedded username or password.</string>
+    <string name="sync_enabled">Encrypted sync enabled</string>
+    <string name="sync_disabled">Encrypted sync disabled</string>
+    <string name="sync_locked">Unlock the vault before syncing.</string>
+    <string name="sync_uploaded">Uploaded sync snapshot (revision %1$d, HTTP %2$d).</string>
+    <string name="sync_applied">Applied remote sync snapshot — %1$d entries.</string>
+    <string name="sync_current">Already current.</string>
+    <string name="sync_conflict">Sync conflict: %1$s</string>
+    <string name="sync_blocked">Network request blocked: %1$s</string>
+    <string name="sync_failed">Sync failed: %1$s</string>
+    <string name="sync_download_warning">Downloading sync may replace this vault with the latest encrypted snapshot from the endpoint. Continue only if this endpoint is yours.</string>
+
+    <string name="breach_check_off">Breach checks are off. Local weak/reuse checks still run without the network.</string>
+    <string name="breach_check_ready">Breach checks are enabled. Only SHA-1 hash prefixes are sent to the range endpoint.</string>
+    <string name="breach_check_last">Last breach check: %1$s. Only SHA-1 hash prefixes were sent.</string>
+    <string name="breach_check_configure">Enable breach checks</string>
+    <string name="breach_check_turn_off">Turn off breach checks</string>
+    <string name="breach_check_run">Run breach check</string>
+    <string name="breach_check_consent_title">Enable breach checks?</string>
+    <string name="breach_check_consent_body">SafeVault will hash each password on this device, send only the first five SHA-1 characters to a k-anonymity range endpoint, and compare returned suffixes locally. Plaintext passwords and full hashes are never sent.</string>
+    <string name="breach_check_enabled">Breach checks enabled</string>
+    <string name="breach_check_disabled">Breach checks disabled</string>
+    <string name="breach_check_locked">Unlock the vault before checking for breaches.</string>
+    <string name="breach_check_done">Checked %1$d passwords; %2$d appeared in breach data.</string>
+    <string name="breach_check_blocked">Network request blocked: %1$s</string>
+    <string name="breach_check_failed">Breach check failed: %1$s</string>
 
     <string name="restore">Restore</string>
     <string name="restore_intro">Choose an encrypted SafeVault backup file. You will need the passphrase it was created with.</string>
@@ -207,8 +247,10 @@
 
     <string name="network_status_locked">Network Lock - on</string>
     <string name="network_status_connected">Network policy - connected backup only</string>
-    <string name="privacy_detail_locked">This build declares the INTERNET permission for optional connected backup, but the default policy is DENY_ALL. No request is issued while Network Lock is on.</string>
+    <string name="network_status_phase7">Network policy - sync &amp; security intelligence</string>
+    <string name="privacy_detail_locked">This build declares the INTERNET permission for optional connected backup, encrypted sync and breach checks, but the default policy is DENY_ALL. No request is issued while Network Lock is on.</string>
     <string name="privacy_detail_connected">Network access is limited to backup package uploads to %1$s. No analytics, sync, breach lookups or plaintext checks are enabled.</string>
+    <string name="privacy_detail_phase7">Network access is limited to consented encrypted sync and breach range lookups. Sync sends sealed snapshots; breach checks send SHA-1 prefixes only.</string>
 
     <!-- Autofill -->
     <string name="autofill">Autofill</string>
