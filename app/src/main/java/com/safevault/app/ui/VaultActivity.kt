@@ -44,6 +44,9 @@ class VaultActivity : SecureActivity() {
         binding.fabAdd.setOnClickListener {
             startActivity(Intent(this, EntryEditActivity::class.java))
         }
+        binding.btnGenerator.setOnClickListener {
+            startActivity(Intent(this, GeneratorActivity::class.java))
+        }
         binding.btnSecurity.setOnClickListener {
             startActivity(Intent(this, SecurityActivity::class.java))
         }
@@ -68,11 +71,14 @@ class VaultActivity : SecureActivity() {
 
     private fun observeVault() {
         val favoritesLabel = getString(R.string.favorites)
+        val recentLabel = getString(R.string.recent)
         lifecycleScope.launch {
             repository.observeAll()
                 .combine(query) { entries, q -> entries.filter { it.matches(q) } }
                 .collect { entries ->
-                    adapter.submitList(VaultListAdapter.build(entries, favoritesLabel))
+                    adapter.submitList(
+                        VaultListAdapter.build(entries, favoritesLabel, recentLabel)
+                    )
                     binding.emptyStateContainer.isVisible = entries.isEmpty()
                     binding.tvEmpty.setText(
                         if (query.value.isBlank()) R.string.empty_vault else R.string.empty_search

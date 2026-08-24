@@ -13,12 +13,23 @@ import com.safevault.app.databinding.ItemServiceHeaderBinding
 import com.safevault.app.security.PasswordHealth
 import java.util.Locale
 
-/** One row of the vault list: either a service heading or a credential. */
+/** One row of the vault list: either a section heading or a credential. */
 sealed interface VaultListItem {
-    data class Header(val label: String, val count: Int) : VaultListItem
+
+    /**
+     * Which shortcut section a row was rendered under. The same entry appears in
+     * Recent, Favourites and its service group, so [Section] is what keeps the
+     * three copies distinguishable to DiffUtil — identity by entry id alone
+     * would make them collide and diff incorrectly.
+     */
+    enum class Section { RECENT, FAVORITE, SERVICE }
+
+    data class Header(val section: Section, val label: String, val count: Int) : VaultListItem
+
     data class Credential(
         val entry: VaultEntry,
-        val reused: Boolean
+        val reused: Boolean,
+        val section: Section
     ) : VaultListItem
 }
 
@@ -40,23 +51,38 @@ class VaultListAdapter(
 
         private val DIFF = object : DiffUtil.ItemCallback<VaultListItem>() {
             override fun areItemsTheSame(a: VaultListItem, b: VaultListItem) = when {
-                a is VaultListItem.Header && b is VaultListItem.Header -> a.label == b.label
+                a is VaultListItem.Header && b is VaultListItem.Header ->
+                    a.section == b.section && a.label == b.label
                 a is VaultListItem.Credential && b is VaultListItem.Credential ->
-                    a.entry.id == b.entry.id
+                    a.section == b.section && a.entry.id == b.entry.id
                 else -> false
             }
 
             override fun areContentsTheSame(a: VaultListItem, b: VaultListItem) = a == b
         }
 
+        /** How many recently-opened accounts the Recent group shows. */
+        const val RECENT_LIMIT = 5
+
+        /**
+         * Below this many entries the whole list fits on screen anyway, so a
+         * Recent group would repeat what the user can already see.
+         */
+        const val RECENT_MIN_VAULT_SIZE = 5
+
         /**
          * Groups entries by service and marks reuse.
          *
-         * Favourites are lifted into their own group at the top — the roadmap's
-         * "fast retrieval" goal is better served by the handful of accounts someone
-         * actually opens than by alphabetical purity.
+         * Recent and Favourites are lifted into their own groups at the top — the
+         * PRD's "fast retrieval" goal is better served by the handful of accounts
+         * someone actually opens than by alphabetical purity. Both are shortcuts
+         * into the same rows, which still appear under their service below.
          */
-        fun build(entries: List<VaultEntry>, favoritesLabel: String): List<VaultListItem> {
+        fun build(
+            entries: List<VaultEntry>,
+            favoritesLabel: String,
+            recentLabel: String
+        ): List<VaultListItem> {
             if (entries.isEmpty()) return emptyList()
 
             val reusedHashes = entries
@@ -68,20 +94,43 @@ class VaultListAdapter(
 
             val items = mutableListOf<VaultListItem>()
 
+            val recent = entries
+                .filter { it.lastUsedAt > 0 }
+                .sortedByDescending { it.lastUsedAt }
+                .take(RECENT_LIMIT)
+            if (entries.size >= RECENT_MIN_VAULT_SIZE && recent.size >= 2) {
+                items += VaultListItem.Header(VaultListItem.Section.RECENT, recentLabel, recent.size)
+                recent.forEach {
+                    items += VaultListItem.Credential(
+                        it, it.reuseHash in reusedHashes, VaultListItem.Section.RECENT
+                    )
+                }
+            }
+
             val favorites = entries.filter { it.favorite }
             if (favorites.isNotEmpty()) {
-                items += VaultListItem.Header(favoritesLabel, favorites.size)
+                items += VaultListItem.Header(
+                    VaultListItem.Section.FAVORITE, favoritesLabel, favorites.size
+                )
                 favorites.sortedBy { it.title.lowercase(Locale.getDefault()) }
-                    .forEach { items += VaultListItem.Credential(it, it.reuseHash in reusedHashes) }
+                    .forEach {
+                        items += VaultListItem.Credential(
+                            it, it.reuseHash in reusedHashes, VaultListItem.Section.FAVORITE
+                        )
+                    }
             }
 
             entries.groupBy { it.groupLabel }
                 .toSortedMap(String.CASE_INSENSITIVE_ORDER)
                 .forEach { (service, group) ->
-                    items += VaultListItem.Header(service, group.size)
+                    items += VaultListItem.Header(
+                        VaultListItem.Section.SERVICE, service, group.size
+                    )
                     group.sortedBy { it.title.lowercase(Locale.getDefault()) }
                         .forEach {
-                            items += VaultListItem.Credential(it, it.reuseHash in reusedHashes)
+                            items += VaultListItem.Credential(
+                                it, it.reuseHash in reusedHashes, VaultListItem.Section.SERVICE
+                            )
                         }
                 }
             return items
